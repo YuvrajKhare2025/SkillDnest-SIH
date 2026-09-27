@@ -5,11 +5,15 @@ import {
     ShieldCheck,
     UserRound,
     Home,
-    CheckCircle2
+    CheckCircle2,
+    AlertCircle,
+    Globe,
+    MapPin
 } from "lucide-react";
 
 import logo from "../assets/Skill D Nest.jpeg";
 import api from "../services/api";
+import { translations } from "../utils/translations";
 import "./CustomerRegister.css";
 
 function CustomerRegister() {
@@ -19,12 +23,23 @@ function CustomerRegister() {
         name: "",
         phone: "",
         email: "",
+        location: "",
         password: "",
         confirmPassword: ""
     });
 
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState("");
+    const [success, setSuccess] = useState("");
+    const [lang, setLang] = useState(localStorage.getItem("lang") || "en");
+
+    const t = translations[lang] || translations.en;
+
+    const toggleLang = () => {
+        const nextLang = lang === "en" ? "hi" : "en";
+        setLang(nextLang);
+        localStorage.setItem("lang", nextLang);
+    };
 
     const handleChange = (e) => {
         setFormData({
@@ -35,39 +50,106 @@ function CustomerRegister() {
 
     const handleRegister = async (e) => {
         e.preventDefault();
-
         setError("");
+        setSuccess("");
 
-        // Password match check
-        if (formData.password !== formData.confirmPassword) {
-            setError("Passwords do not match");
+        const cleanName = formData.name.trim();
+        const rawPhone = formData.phone.trim();
+        const cleanPhone = rawPhone.replace(/[^\d+]/g, "");
+        const rawEmail = formData.email.trim();
+        const cleanLocation = formData.location.trim() || "Local Community";
+
+        if (!cleanName || !cleanPhone || !formData.password) {
+            setError("Name, phone, and password are required.");
             return;
+        }
+
+        if (cleanPhone.replace(/\D/g, "").length < 10) {
+            setError("Please enter a valid 10-digit phone number.");
+            return;
+        }
+
+        if (formData.password.length < 6) {
+            setError("Password must be at least 6 characters long.");
+            return;
+        }
+
+        if (formData.password !== formData.confirmPassword) {
+            setError("Passwords do not match.");
+            return;
+        }
+
+        // Email validation: if provided, validate; if not provided, supply a unique fallback for backend compatibility
+        let finalEmail = rawEmail;
+        if (rawEmail) {
+            const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+            if (!emailRegex.test(rawEmail)) {
+                setError("Please enter a valid email address (e.g. user@gmail.com).");
+                return;
+            }
+        } else {
+            const digitsOnly = cleanPhone.replace(/\D/g, "");
+            finalEmail = `customer_${digitsOnly}@skilldnest.com`;
         }
 
         try {
             setLoading(true);
 
-            const response = await api.post("/auth/register", {
-                name: formData.name,
-                phone: formData.phone,
-                email: formData.email,
+            const registrationPayload = {
+                name: cleanName,
+                phone: cleanPhone,
+                email: finalEmail.toLowerCase(),
                 password: formData.password,
-                role: "Customer"
-            });
+                role: "Customer",
+                location: cleanLocation
+            };
 
-            console.log("Registration successful:", response.data);
+            const response = await api.post("/auth/register", registrationPayload);
 
-            // Registration successful
-            navigate("/customer-dashboard");
+            let token = response.data.token;
+            let user = response.data.user;
+
+            // If backend registration doesn't return JWT directly, auto-login immediately
+            if (!token) {
+                try {
+                    const loginRes = await api.post("/auth/login", {
+                        phone: cleanPhone,
+                        password: formData.password
+                    });
+                    token = loginRes.data?.token;
+                    user = loginRes.data?.user || user;
+                } catch (loginErr) {
+                    console.log("Direct login fallback note:", loginErr);
+                }
+            }
+
+            if (token && user) {
+                localStorage.setItem("token", token);
+                localStorage.setItem("user", JSON.stringify(user));
+                setSuccess("Account created successfully! Redirecting to dashboard...");
+                setTimeout(() => {
+                    navigate("/customer-dashboard");
+                }, 1200);
+            } else {
+                setSuccess("Account created successfully! Redirecting to login...");
+                setTimeout(() => {
+                    navigate("/customer-login");
+                }, 1200);
+            }
 
         } catch (err) {
             console.error("Registration Error:", err);
+            const serverMessage =
+                err.response?.data?.message ||
+                err.response?.data?.error ||
+                (err.code === "ECONNABORTED" ? "Connection timed out. Please try again." : null) ||
+                (err.message === "Network Error" ? "Network error: Unable to reach the server. Please check your internet connection." : null);
 
             setError(
-                err.response?.data?.message ||
-                "Registration failed. Please try again."
+                serverMessage ||
+                (typeof err.response?.data === "string" ? err.response.data : null) ||
+                "Registration failed. Please check your details and try again."
             );
-
         } finally {
             setLoading(false);
         }
@@ -82,19 +164,31 @@ function CustomerRegister() {
                 <div className="register-bg-image"></div>
                 <div className="register-overlay"></div>
 
-                <button
-                    className="register-home-btn"
-                    onClick={() => navigate("/")}
-                >
-                    <Home size={17} />
-                    Home
-                </button>
+                <div className="visual-top-actions" style={{ position: "absolute", top: 28, left: 30, right: 30, zIndex: 5, display: "flex", justifyContent: "space-between" }}>
+                    <button
+                        className="register-home-btn"
+                        onClick={() => navigate("/")}
+                        type="button"
+                    >
+                        <Home size={17} />
+                        Home
+                    </button>
+
+                    <button
+                        className="register-home-btn"
+                        onClick={toggleLang}
+                        type="button"
+                    >
+                        <Globe size={16} />
+                        {lang === "en" ? "हिन्दी" : "English"}
+                    </button>
+                </div>
 
                 <div className="register-visual-content">
 
                     <div className="register-badge">
                         <ShieldCheck size={17} />
-                        Trusted Local Network
+                        Trusted Cooperative Network
                     </div>
 
                     <h1>
@@ -113,17 +207,17 @@ function CustomerRegister() {
 
                         <div>
                             <CheckCircle2 size={19} />
-                            Verified local workers
+                            Verified local workers & cooperatives
                         </div>
 
                         <div>
                             <CheckCircle2 size={19} />
-                            Compare cooperative prices
+                            AI-powered Smart Worker Matching
                         </div>
 
                         <div>
                             <CheckCircle2 size={19} />
-                            Simple & secure booking
+                            Real-time booking tracking & fair pricing
                         </div>
 
                     </div>
@@ -146,8 +240,8 @@ function CustomerRegister() {
                         />
 
                         <div>
-                            <h2>SkillDnest</h2>
-                            <p>Local Skills, Trusted Services</p>
+                            <h2>{t.brandName}</h2>
+                            <p>{t.tagline}</p>
                         </div>
 
                     </div>
@@ -162,7 +256,7 @@ function CustomerRegister() {
 
                         <div>
                             <span>GET STARTED</span>
-                            <h2>Create Account</h2>
+                            <h2>{t.createAccount}</h2>
                         </div>
 
                     </div>
@@ -174,8 +268,17 @@ function CustomerRegister() {
 
                     {/* ERROR */}
                     {error && (
-                        <div className="register-error">
-                            {error}
+                        <div className="register-error" style={{ display: "flex", alignItems: "center", gap: "8px", background: "#fef2f2", color: "#b91c1c", padding: "12px 16px", borderRadius: "12px", marginBottom: "18px", border: "1px solid #fecaca" }}>
+                            <AlertCircle size={18} />
+                            <span>{error}</span>
+                        </div>
+                    )}
+
+                    {/* SUCCESS */}
+                    {success && (
+                        <div style={{ display: "flex", alignItems: "center", gap: "8px", background: "#ecfdf5", color: "#065f46", padding: "12px 16px", borderRadius: "12px", marginBottom: "18px", border: "1px solid #a7f3d0" }}>
+                            <CheckCircle2 size={18} />
+                            <span>{success}</span>
                         </div>
                     )}
 
@@ -188,14 +291,14 @@ function CustomerRegister() {
 
                             <div className="form-group">
 
-                                <label>Full Name</label>
+                                <label>Full Name *</label>
 
                                 <input
                                     type="text"
                                     name="name"
                                     value={formData.name}
                                     onChange={handleChange}
-                                    placeholder="Enter your full name"
+                                    placeholder="e.g. Ramesh Kumar"
                                     required
                                 />
 
@@ -204,14 +307,14 @@ function CustomerRegister() {
 
                             <div className="form-group">
 
-                                <label>Phone</label>
+                                <label>Phone Number *</label>
 
                                 <input
                                     type="tel"
                                     name="phone"
                                     value={formData.phone}
                                     onChange={handleChange}
-                                    placeholder="Enter phone number"
+                                    placeholder="e.g. 9876543210"
                                     required
                                 />
 
@@ -220,19 +323,37 @@ function CustomerRegister() {
                         </div>
 
 
-                        {/* EMAIL */}
-                        <div className="form-group">
+                        {/* EMAIL + LOCATION */}
+                        <div className="form-row">
 
-                            <label>Email / Gmail</label>
+                            <div className="form-group">
 
-                            <input
-                                type="email"
-                                name="email"
-                                value={formData.email}
-                                onChange={handleChange}
-                                placeholder="Enter your email"
-                                required
-                            />
+                                <label>Email / Gmail (Optional)</label>
+
+                                <input
+                                    type="email"
+                                    name="email"
+                                    value={formData.email}
+                                    onChange={handleChange}
+                                    placeholder="user@gmail.com"
+                                />
+
+                            </div>
+
+                            <div className="form-group">
+
+                                <label>City / Location *</label>
+
+                                <input
+                                    type="text"
+                                    name="location"
+                                    value={formData.location}
+                                    onChange={handleChange}
+                                    placeholder="e.g. Satna, MP"
+                                    required
+                                />
+
+                            </div>
 
                         </div>
 
@@ -242,14 +363,14 @@ function CustomerRegister() {
 
                             <div className="form-group">
 
-                                <label>Password</label>
+                                <label>Password (Min. 6 chars) *</label>
 
                                 <input
                                     type="password"
                                     name="password"
                                     value={formData.password}
                                     onChange={handleChange}
-                                    placeholder="Create password"
+                                    placeholder="Create secure password"
                                     required
                                 />
 
@@ -258,65 +379,16 @@ function CustomerRegister() {
 
                             <div className="form-group">
 
-                                <label>Confirm Password</label>
+                                <label>Confirm Password *</label>
 
                                 <input
                                     type="password"
                                     name="confirmPassword"
                                     value={formData.confirmPassword}
                                     onChange={handleChange}
-                                    placeholder="Confirm password"
+                                    placeholder="Re-enter password"
                                     required
                                 />
-
-                            </div>
-
-                        </div>
-
-
-                        {/* LOCATION - UI ONLY FOR NOW */}
-                        <div className="form-row">
-
-                            <div className="form-group">
-
-                                <label>City / District</label>
-
-                                <input
-                                    type="text"
-                                    placeholder="Your city or district"
-                                />
-
-                            </div>
-
-
-                            <div className="form-group">
-
-                                <label>Address</label>
-
-                                <input
-                                    type="text"
-                                    placeholder="Your area / locality"
-                                />
-
-                            </div>
-
-                        </div>
-
-
-                        {/* SERVICES */}
-                        <div className="service-preference">
-
-                            <label>
-                                What services are you interested in?
-                            </label>
-
-                            <div className="service-options">
-
-                                <span>⚡ Electrical</span>
-                                <span>🔧 Plumbing</span>
-                                <span>🪚 Carpenter</span>
-                                <span>🧹 Cleaning</span>
-                                <span>🌾 Agriculture</span>
 
                             </div>
 
@@ -331,7 +403,7 @@ function CustomerRegister() {
                         >
                             {loading
                                 ? "Creating Account..."
-                                : "Create Customer Account"
+                                : t.createAccount
                             }
 
                             {!loading && <ArrowRight size={19} />}
@@ -344,13 +416,14 @@ function CustomerRegister() {
                     <div className="already-account">
 
                         <span>
-                            Already have an account?
+                            {t.alreadyHaveAccount}
                         </span>
 
                         <button
+                            type="button"
                             onClick={() => navigate("/customer-login")}
                         >
-                            Login
+                            {t.customerLogin}
                         </button>
 
                     </div>
@@ -361,7 +434,7 @@ function CustomerRegister() {
 
                         <ShieldCheck size={17} />
 
-                        Your information is securely protected.
+                        Your information is securely encrypted & protected.
 
                     </div>
 

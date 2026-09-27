@@ -4,7 +4,6 @@ const protect = require("../middleware/authMiddleware");
 
 const router = express.Router();
 
-
 // 1. CREATE NOTIFICATION
 router.post("/", protect, async (req, res) => {
     try {
@@ -26,7 +25,6 @@ router.post("/", protect, async (req, res) => {
             message: "Notification created successfully",
             notification
         });
-
     } catch (error) {
         res.status(500).json({
             message: "Error creating notification",
@@ -35,19 +33,20 @@ router.post("/", protect, async (req, res) => {
     }
 });
 
-
 // 2. GET MY NOTIFICATIONS
 router.get("/my", protect, async (req, res) => {
     try {
         const notifications = await Notification.find({
             userId: req.user.id
-        }).sort({ createdAt: -1 });
+        }).sort({ createdAt: -1 }).limit(50);
+
+        const unreadCount = notifications.filter(n => !n.isRead).length;
 
         res.status(200).json({
             count: notifications.length,
+            unreadCount,
             notifications
         });
-
     } catch (error) {
         res.status(500).json({
             message: "Error fetching notifications",
@@ -55,7 +54,6 @@ router.get("/my", protect, async (req, res) => {
         });
     }
 });
-
 
 // 3. MARK NOTIFICATION AS READ
 router.patch("/:id/read", protect, async (req, res) => {
@@ -78,7 +76,6 @@ router.patch("/:id/read", protect, async (req, res) => {
             message: "Notification marked as read",
             notification
         });
-
     } catch (error) {
         res.status(500).json({
             message: "Error updating notification",
@@ -87,5 +84,23 @@ router.patch("/:id/read", protect, async (req, res) => {
     }
 });
 
+// 4. MARK ALL NOTIFICATIONS AS READ
+router.patch("/read-all", protect, async (req, res) => {
+    try {
+        await Notification.updateMany(
+            { userId: req.user.id, isRead: false },
+            { $set: { isRead: true } }
+        );
+
+        res.status(200).json({
+            message: "All notifications marked as read"
+        });
+    } catch (error) {
+        res.status(500).json({
+            message: "Error marking all as read",
+            error: error.message
+        });
+    }
+});
 
 module.exports = router;

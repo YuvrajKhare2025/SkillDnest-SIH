@@ -7,7 +7,7 @@
     width: 100%;
     display: flex;
     background: #f7f9fc;
-    overflow: hidden;
+    overflow-x: hidden;
     font-family: Arial, Helvetica, sans-serif;
 }
 

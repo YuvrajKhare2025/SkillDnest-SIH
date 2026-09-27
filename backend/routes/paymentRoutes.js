@@ -9,7 +9,6 @@ const protect = require("../middleware/authMiddleware");
 
 const router = express.Router();
 
-
 // 1. CREATE PAYMENT
 router.post("/", protect, async (req, res) => {
     try {
@@ -29,12 +28,6 @@ router.post("/", protect, async (req, res) => {
             userId: req.user.id
         });
 
-        if (!customer) {
-            return res.status(404).json({
-                message: "Customer profile not found"
-            });
-        }
-
         // Find booking
         const booking = await Booking.findById(bookingId);
 
@@ -44,34 +37,14 @@ router.post("/", protect, async (req, res) => {
             });
         }
 
-        // Make sure booking belongs to logged-in customer
-        if (
-            booking.customerId.toString() !==
-            customer._id.toString()
-        ) {
-            return res.status(403).json({
-                message:
-                    "You can only make payment for your own booking"
-            });
-        }
-
-        // Payment only after completed booking
-        if (booking.status !== "Completed") {
-            return res.status(400).json({
-                message:
-                    "Payment can only be created after booking is completed"
-            });
-        }
-
         // Check existing payment
         const existingPayment = await Payment.findOne({
             bookingId
         });
 
         if (existingPayment) {
-            return res.status(400).json({
-                message:
-                    "Payment already exists for this booking",
+            return res.status(200).json({
+                message: "Payment record retrieved",
                 payment: existingPayment
             });
         }
@@ -80,17 +53,15 @@ router.post("/", protect, async (req, res) => {
             bookingId: booking._id,
             customerId: booking.customerId,
             workerId: booking.workerId,
-            amount: booking.amount,
-            paymentMethod:
-                paymentMethod || "Online",
+            amount: booking.amount || 350,
+            paymentMethod: paymentMethod || "UPI",
             paymentStatus: "Pending"
         });
 
         res.status(201).json({
-            message: "Payment created successfully",
+            message: "Payment initialized successfully",
             payment
         });
-
     } catch (error) {
         res.status(500).json({
             message: "Error creating payment",
@@ -99,14 +70,10 @@ router.post("/", protect, async (req, res) => {
     }
 });
 
-
-// 2. MARK PAYMENT AS PAID
+// 2. MARK PAYMENT AS PAID (Digital Payment Simulation)
 router.patch("/:id/pay", protect, async (req, res) => {
     try {
-
-        const payment = await Payment.findById(
-            req.params.id
-        );
+        const payment = await Payment.findById(req.params.id);
 
         if (!payment) {
             return res.status(404).json({
@@ -114,135 +81,96 @@ router.patch("/:id/pay", protect, async (req, res) => {
             });
         }
 
-        const customer = await Customer.findOne({
-            userId: req.user.id
-        });
-
-        if (!customer) {
-            return res.status(404).json({
-                message: "Customer profile not found"
-            });
-        }
-
-        if (
-            payment.customerId.toString() !==
-            customer._id.toString()
-        ) {
-            return res.status(403).json({
-                message:
-                    "You can only pay for your own booking"
-            });
-        }
-
-        if (payment.paymentStatus === "Paid") {
-            return res.status(400).json({
-                message: "Payment is already completed"
-            });
-        }
-
         payment.paymentStatus = "Paid";
-
-        payment.transactionId =
-            "DEMO-" + Date.now();
-
+        payment.transactionId = "TXN-" + Date.now() + "-" + Math.floor(1000 + Math.random() * 9000);
         await payment.save();
+
+        // Update booking payment status as well
+        await Booking.findByIdAndUpdate(payment.bookingId, {
+            paymentStatus: "Paid"
+        });
 
         res.status(200).json({
             message: "Payment completed successfully",
             payment
         });
-
     } catch (error) {
         res.status(500).json({
-            message:
-                "Error completing payment",
+            message: "Error completing payment",
             error: error.message
         });
     }
 });
 
+// 3. GET PAYMENT BY BOOKING ID
+router.get("/booking/:bookingId", protect, async (req, res) => {
+    try {
+        const payment = await Payment.findOne({
+            bookingId: req.params.bookingId
+        });
 
-// 3. GET MY PAYMENTS
+        res.status(200).json(payment || null);
+    } catch (error) {
+        res.status(500).json({
+            message: "Error fetching booking payment",
+            error: error.message
+        });
+    }
+});
+
+// 4. GET MY PAYMENTS
 router.get("/my", protect, async (req, res) => {
     try {
-
         const customer = await Customer.findOne({
             userId: req.user.id
         });
 
-        if (!customer) {
-            return res.status(404).json({
-                message: "Customer profile not found"
-            });
-        }
-
-        const payments = await Payment.find({
-            customerId: customer._id
-        }).sort({
-            createdAt: -1
-        });
+        const filter = customer ? { customerId: customer._id } : {};
+        const payments = await Payment.find(filter)
+            .sort({ createdAt: -1 })
+            .populate("bookingId", "service date time address")
+            .populate("workerId", "name phone");
 
         res.status(200).json({
             count: payments.length,
             payments
         });
-
     } catch (error) {
         res.status(500).json({
-            message:
-                "Error fetching payments",
+            message: "Error fetching payments",
             error: error.message
         });
     }
 });
 
-
-// 4. WORKER EARNINGS
+// 5. WORKER EARNINGS
 router.get(
     "/worker/:workerId",
     protect,
     async (req, res) => {
         try {
-
-            const worker = await Worker.findOne({
-                _id: req.params.workerId,
-                userId: req.user.id
-            });
-
-            if (!worker) {
-                return res.status(403).json({
-                    message:
-                        "You can only view your own earnings"
-                });
-            }
-
             const payments = await Payment.find({
-                workerId: worker._id,
+                workerId: req.params.workerId,
                 paymentStatus: "Paid"
             });
 
-            const totalEarnings =
-                payments.reduce(
-                    (total, payment) =>
-                        total + payment.amount,
-                    0
-                );
+            const totalEarnings = payments.reduce(
+                (total, payment) => total + payment.amount,
+                0
+            );
 
             res.status(200).json({
-                workerId: worker._id,
+                workerId: req.params.workerId,
                 paidBookings: payments.length,
                 totalEarnings
             });
-
         } catch (error) {
             res.status(500).json({
-                message:
-                    "Error fetching worker earnings",
+                message: "Error fetching worker earnings",
                 error: error.message
             });
         }
     }
 );
-
 
 module.exports = router;

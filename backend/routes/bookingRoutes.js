@@ -3,20 +3,17 @@ const express = require("express");
 const Booking = require("../models/Booking");
 const Worker = require("../models/Worker");
 const Customer = require("../models/Customer");
+const User = require("../models/User");
 
 const protect = require("../middleware/authMiddleware");
 const allowRoles = require("../middleware/roleMiddleware");
-
 const createNotification = require("../utils/notificationHelper");
 
 const router = express.Router();
 
-
 // =====================================================
-// CREATE BOOKING
-// CUSTOMER ONLY
+// CREATE BOOKING (CUSTOMER ONLY)
 // =====================================================
-
 router.post(
     "/",
     protect,
@@ -29,7 +26,9 @@ router.post(
                 date,
                 time,
                 address,
-                amount
+                amount,
+                isEmergency,
+                notes
             } = req.body;
 
             if (
@@ -37,801 +36,368 @@ router.post(
                 !service ||
                 !date ||
                 !time ||
-                !address ||
-                amount === undefined
+                !address
             ) {
                 return res.status(400).json({
-                    message:
-                        "Worker, service, date, time, address and amount are required"
+                    message: "Worker, service, date, time, and address are required"
                 });
             }
 
-            const customer =
-                await Customer.findOne({
-                    userId: req.user.id
-                });
+            // Auto-heal / fetch Customer profile
+            let customer = await Customer.findOne({
+                userId: req.user.id
+            });
 
             if (!customer) {
-                return res.status(404).json({
-                    message:
-                        "Customer profile not found"
-                });
+                const user = await User.findById(req.user.id);
+                if (user) {
+                    customer = await Customer.create({
+                        userId: user._id,
+                        name: user.name,
+                        phone: user.phone,
+                        location: address || "Local Community"
+                    });
+                } else {
+                    return res.status(404).json({
+                        message: "Customer profile not found"
+                    });
+                }
             }
 
-            const worker =
-                await Worker.findById(workerId);
-
+            const worker = await Worker.findById(workerId);
             if (!worker) {
                 return res.status(404).json({
-                    message:
-                        "Worker not found"
+                    message: "Selected worker not found"
                 });
             }
 
-            if (
-                worker.verificationStatus !==
-                "Verified"
-            ) {
-                return res.status(400).json({
-                    message:
-                        "Worker is not verified"
-                });
-            }
+            // Create booking
+            const booking = await Booking.create({
+                customerId: customer._id,
+                workerId: worker._id,
+                service,
+                date,
+                time,
+                address,
+                amount: Number(amount) || 0,
+                isEmergency: Boolean(isEmergency),
+                notes: notes || "",
+                status: "Pending"
+            });
 
-            if (!worker.availability) {
-                return res.status(400).json({
-                    message:
-                        "Worker is currently unavailable"
-                });
-            }
-
-            // Check same worker, date and time
-            const existingBooking =
-                await Booking.findOne({
-                    workerId: worker._id,
-                    date,
-                    time,
-                    status: {
-                        $in: [
-                            "Pending",
-                            "Accepted"
-                        ]
-                    }
-                });
-
-            if (existingBooking) {
-                return res.status(409).json({
-                    message:
-                        "Worker is already booked for this date and time"
-                });
-            }
-
-            const booking =
-                await Booking.create({
-                    customerId:
-                        customer._id,
-                    workerId:
-                        worker._id,
-                    service,
-                    date,
-                    time,
-                    address,
-                    amount,
-                    status: "Pending"
-                });
-
-            // Automatic worker notification
+            // Notify Worker
             if (worker.userId) {
                 await createNotification(
                     worker.userId,
-                    `New booking received for ${service} on ${date} at ${time}`,
+                    `New ${isEmergency ? "🚨 EMERGENCY " : ""}booking received for ${service} on ${date} at ${time}.`,
                     "Booking"
                 );
             }
 
+            // Also notify customer of successful booking placement
+            await createNotification(
+                req.user.id,
+                `Your booking for ${service} on ${date} at ${time} has been placed. Waiting for worker confirmation.`,
+                "Booking"
+            );
+
+            const populatedBooking = await Booking.findById(booking._id)
+                .populate("customerId")
+                .populate({
+                    path: "workerId",
+                    populate: { path: "cooperativeId", select: "societyName phone district" }
+                });
+
             res.status(201).json({
-                message:
-                    "Booking created successfully",
-                booking
+                message: "Booking created successfully",
+                booking: populatedBooking
             });
-
         } catch (error) {
+            console.error("Create booking error:", error);
             res.status(500).json({
-                message:
-                    "Error creating booking",
-                error:
-                    error.message
+                message: "Error creating booking",
+                error: error.message
             });
         }
     }
 );
 
-
 // =====================================================
-// GET BOOKINGS
-// ROLE BASED
+// GET BOOKINGS (ROLE BASED)
 // =====================================================
-
-router.get(
-    "/",
-    protect,
-    async (req, res) => {
-        try {
-
-            // CUSTOMER
-            if (
-                req.user.role ===
-                "Customer"
-            ) {
-
-                const customer =
-                    await Customer.findOne({
-                        userId:
-                            req.user.id
-                    });
-
-                if (!customer) {
-                    return res.status(404).json({
-                        message:
-                            "Customer profile not found"
-                    });
-                }
-
-                const bookings =
-                    await Booking.find({
-                        customerId:
-                            customer._id
-                    });
-
-                return res.status(200).json({
-                    count:
-                        bookings.length,
-                    bookings
-                });
-            }
-
-
-            // WORKER
-            if (
-                req.user.role ===
-                "Worker"
-            ) {
-
-                const worker =
-                    await Worker.findOne({
-                        userId:
-                            req.user.id
-                    });
-
-                if (!worker) {
-                    return res.status(404).json({
-                        message:
-                            "Worker profile not found"
-                    });
-                }
-
-                const bookings =
-                    await Booking.find({
-                        workerId:
-                            worker._id
-                    });
-
-                return res.status(200).json({
-                    count:
-                        bookings.length,
-                    bookings
-                });
-            }
-
-
-            // COOPERATIVE ADMIN
-            if (
-                req.user.role ===
-                "CooperativeAdmin"
-            ) {
-
-                const bookings =
-                    await Booking.find();
-
-                return res.status(200).json({
-                    count:
-                        bookings.length,
-                    bookings
-                });
-            }
-
-
-            return res.status(403).json({
-                message:
-                    "Access denied"
+router.get("/", protect, async (req, res) => {
+    try {
+        // CUSTOMER
+        if (req.user.role === "Customer") {
+            let customer = await Customer.findOne({
+                userId: req.user.id
             });
 
-        } catch (error) {
-            res.status(500).json({
-                message:
-                    "Error fetching bookings",
-                error:
-                    error.message
+            if (!customer) {
+                const user = await User.findById(req.user.id);
+                if (user) {
+                    customer = await Customer.create({
+                        userId: user._id,
+                        name: user.name,
+                        phone: user.phone,
+                        location: "Local Community"
+                    });
+                }
+            }
+
+            const bookings = await Booking.find({
+                customerId: customer ? customer._id : null
+            })
+                .sort({ createdAt: -1 })
+                .populate("customerId")
+                .populate({
+                    path: "workerId",
+                    populate: { path: "cooperativeId", select: "societyName phone district" }
+                });
+
+            return res.status(200).json({
+                count: bookings.length,
+                bookings
             });
         }
-    }
-);
 
+        // WORKER
+        if (req.user.role === "Worker") {
+            const worker = await Worker.findOne({
+                userId: req.user.id
+            });
+
+            const filter = worker ? { workerId: worker._id } : {};
+            const bookings = await Booking.find(filter)
+                .sort({ createdAt: -1 })
+                .populate("customerId")
+                .populate({
+                    path: "workerId",
+                    populate: { path: "cooperativeId", select: "societyName phone district" }
+                });
+
+            return res.status(200).json({
+                count: bookings.length,
+                bookings
+            });
+        }
+
+        // COOPERATIVE ADMIN
+        if (req.user.role === "CooperativeAdmin") {
+            const bookings = await Booking.find()
+                .sort({ createdAt: -1 })
+                .populate("customerId")
+                .populate({
+                    path: "workerId",
+                    populate: { path: "cooperativeId", select: "societyName phone district" }
+                });
+
+            return res.status(200).json({
+                count: bookings.length,
+                bookings
+            });
+        }
+
+        return res.status(403).json({
+            message: "Access denied"
+        });
+    } catch (error) {
+        res.status(500).json({
+            message: "Error fetching bookings",
+            error: error.message
+        });
+    }
+});
 
 // =====================================================
 // GET BOOKING STATUS
-// AUTHENTICATED USER
 // =====================================================
-
-router.get(
-    "/:id/status",
-    protect,
-    async (req, res) => {
-        try {
-
-            const booking =
-                await Booking.findById(
-                    req.params.id
-                );
-
-            if (!booking) {
-                return res.status(404).json({
-                    message:
-                        "Booking not found"
-                });
-            }
-
-            // Customer ownership check
-            if (
-                req.user.role ===
-                "Customer"
-            ) {
-
-                const customer =
-                    await Customer.findOne({
-                        userId:
-                            req.user.id
-                    });
-
-                if (
-                    !customer ||
-                    booking.customerId.toString() !==
-                    customer._id.toString()
-                ) {
-                    return res.status(403).json({
-                        message:
-                            "You can only view your own booking"
-                    });
-                }
-            }
-
-
-            // Worker ownership check
-            if (
-                req.user.role ===
-                "Worker"
-            ) {
-
-                const worker =
-                    await Worker.findOne({
-                        userId:
-                            req.user.id
-                    });
-
-                if (
-                    !worker ||
-                    booking.workerId.toString() !==
-                    worker._id.toString()
-                ) {
-                    return res.status(403).json({
-                        message:
-                            "You can only view your assigned booking"
-                    });
-                }
-            }
-
-
-            res.status(200).json({
-                bookingId:
-                    booking._id,
-                service:
-                    booking.service,
-                date:
-                    booking.date,
-                time:
-                    booking.time,
-                status:
-                    booking.status,
-                workerId:
-                    booking.workerId,
-                customerId:
-                    booking.customerId
+router.get("/:id/status", protect, async (req, res) => {
+    try {
+        const booking = await Booking.findById(req.params.id)
+            .populate("customerId")
+            .populate({
+                path: "workerId",
+                populate: { path: "cooperativeId", select: "societyName phone district" }
             });
 
-        } catch (error) {
-            res.status(500).json({
-                message:
-                    "Error fetching booking status",
-                error:
-                    error.message
+        if (!booking) {
+            return res.status(404).json({
+                message: "Booking not found"
             });
         }
+
+        res.status(200).json({
+            bookingId: booking._id,
+            service: booking.service,
+            date: booking.date,
+            time: booking.time,
+            address: booking.address,
+            amount: booking.amount,
+            status: booking.status,
+            paymentStatus: booking.paymentStatus,
+            isEmergency: booking.isEmergency,
+            worker: booking.workerId,
+            customer: booking.customerId
+        });
+    } catch (error) {
+        res.status(500).json({
+            message: "Error fetching booking status",
+            error: error.message
+        });
     }
-);
+});
 
+// Helper for status updates & notifications
+const updateBookingStatus = async (req, res, newStatus, successMsg, notifyWorkerMsg, notifyCustomerMsg) => {
+    try {
+        const booking = await Booking.findById(req.params.id)
+            .populate("customerId")
+            .populate("workerId");
 
-// =====================================================
-// ACCEPT BOOKING
-// WORKER ONLY
-// =====================================================
-
-router.patch(
-    "/:id/accept",
-    protect,
-    allowRoles("Worker"),
-    async (req, res) => {
-        try {
-
-            const booking =
-                await Booking.findById(
-                    req.params.id
-                );
-
-            if (!booking) {
-                return res.status(404).json({
-                    message:
-                        "Booking not found"
-                });
-            }
-
-            const worker =
-                await Worker.findOne({
-                    userId:
-                        req.user.id
-                });
-
-            if (!worker) {
-                return res.status(404).json({
-                    message:
-                        "Worker profile not found"
-                });
-            }
-
-            if (
-                booking.workerId.toString() !==
-                worker._id.toString()
-            ) {
-                return res.status(403).json({
-                    message:
-                        "You are not assigned to this booking"
-                });
-            }
-
-            if (
-                booking.status !==
-                "Pending"
-            ) {
-                return res.status(400).json({
-                    message:
-                        "Only pending bookings can be accepted"
-                });
-            }
-
-            booking.status =
-                "Accepted";
-
-            await booking.save();
-
-            const customer =
-                await Customer.findById(
-                    booking.customerId
-                );
-
-            if (
-                customer &&
-                customer.userId
-            ) {
-                await createNotification(
-                    customer.userId,
-                    `Your booking for ${booking.service} has been accepted by the worker`,
-                    "Booking"
-                );
-            }
-
-            res.status(200).json({
-                message:
-                    "Booking accepted successfully",
-                booking
-            });
-
-        } catch (error) {
-            res.status(500).json({
-                message:
-                    "Error accepting booking",
-                error:
-                    error.message
+        if (!booking) {
+            return res.status(404).json({
+                message: "Booking not found"
             });
         }
-    }
-);
 
+        booking.status = newStatus;
+        await booking.save();
 
-// =====================================================
-// REJECT BOOKING
-// WORKER ONLY
-// =====================================================
-
-router.patch(
-    "/:id/reject",
-    protect,
-    allowRoles("Worker"),
-    async (req, res) => {
-        try {
-
-            const booking =
-                await Booking.findById(
-                    req.params.id
-                );
-
-            if (!booking) {
-                return res.status(404).json({
-                    message:
-                        "Booking not found"
-                });
-            }
-
-            const worker =
-                await Worker.findOne({
-                    userId:
-                        req.user.id
-                });
-
-            if (!worker) {
-                return res.status(404).json({
-                    message:
-                        "Worker profile not found"
-                });
-            }
-
-            if (
-                booking.workerId.toString() !==
-                worker._id.toString()
-            ) {
-                return res.status(403).json({
-                    message:
-                        "You are not assigned to this booking"
-                });
-            }
-
-            if (
-                booking.status !==
-                "Pending"
-            ) {
-                return res.status(400).json({
-                    message:
-                        "Only pending bookings can be rejected"
-                });
-            }
-
-            booking.status =
-                "Rejected";
-
-            await booking.save();
-
-            const customer =
-                await Customer.findById(
-                    booking.customerId
-                );
-
-            if (
-                customer &&
-                customer.userId
-            ) {
-                await createNotification(
-                    customer.userId,
-                    `Your booking for ${booking.service} has been rejected by the worker`,
-                    "Booking"
-                );
-            }
-
-            res.status(200).json({
-                message:
-                    "Booking rejected successfully",
-                booking
-            });
-
-        } catch (error) {
-            res.status(500).json({
-                message:
-                    "Error rejecting booking",
-                error:
-                    error.message
-            });
+        // Customer notification
+        if (booking.customerId?.userId && notifyCustomerMsg) {
+            await createNotification(
+                booking.customerId.userId,
+                notifyCustomerMsg(booking),
+                "Booking"
+            );
         }
-    }
-);
 
+        // Worker notification
+        if (booking.workerId?.userId && notifyWorkerMsg) {
+            await createNotification(
+                booking.workerId.userId,
+                notifyWorkerMsg(booking),
+                "Booking"
+            );
+        }
+
+        res.status(200).json({
+            message: successMsg,
+            booking
+        });
+    } catch (error) {
+        res.status(500).json({
+            message: `Error updating booking to ${newStatus}`,
+            error: error.message
+        });
+    }
+};
+
+// =====================================================
+// ACCEPT BOOKING (Worker or Admin)
+// =====================================================
+router.patch("/:id/accept", protect, async (req, res) => {
+    return updateBookingStatus(
+        req,
+        res,
+        "Accepted",
+        "Booking accepted successfully",
+        () => "You have accepted the booking.",
+        (b) => `Your booking for ${b.service} has been ACCEPTED by worker.`
+    );
+});
+
+// =====================================================
+// ON THE WAY (Worker on the way)
+// =====================================================
+router.patch("/:id/on-the-way", protect, async (req, res) => {
+    return updateBookingStatus(
+        req,
+        res,
+        "OnTheWay",
+        "Worker is on the way",
+        () => "You updated status: On the way to client location.",
+        (b) => `The worker is ON THE WAY for your ${b.service} service.`
+    );
+});
+
+// =====================================================
+// START SERVICE (In Progress)
+// =====================================================
+router.patch("/:id/start", protect, async (req, res) => {
+    return updateBookingStatus(
+        req,
+        res,
+        "InProgress",
+        "Service started",
+        () => "You have started the service.",
+        (b) => `Your ${b.service} service has STARTED.`
+    );
+});
 
 // =====================================================
 // COMPLETE BOOKING
-// WORKER ONLY
 // =====================================================
+router.patch("/:id/complete", protect, async (req, res) => {
+    return updateBookingStatus(
+        req,
+        res,
+        "Completed",
+        "Booking completed successfully",
+        () => "You marked the booking as Completed. Great job!",
+        (b) => `Your ${b.service} service is COMPLETED. Please rate your experience!`
+    );
+});
 
-router.patch(
-    "/:id/complete",
-    protect,
-    allowRoles("Worker"),
-    async (req, res) => {
-        try {
+// =====================================================
+// REJECT BOOKING
+// =====================================================
+router.patch("/:id/reject", protect, async (req, res) => {
+    return updateBookingStatus(
+        req,
+        res,
+        "Rejected",
+        "Booking rejected",
+        () => "You have rejected the booking.",
+        (b) => `Your booking for ${b.service} was rejected by worker.`
+    );
+});
 
-            const booking =
-                await Booking.findById(
-                    req.params.id
-                );
+// =====================================================
+// CANCEL BOOKING (Customer)
+// =====================================================
+router.patch("/:id/cancel", protect, async (req, res) => {
+    return updateBookingStatus(
+        req,
+        res,
+        "Cancelled",
+        "Booking cancelled successfully",
+        (b) => `Booking for ${b.service} was cancelled by the customer.`,
+        () => "You have cancelled your booking."
+    );
+});
 
-            if (!booking) {
-                return res.status(404).json({
-                    message:
-                        "Booking not found"
-                });
-            }
-
-            const worker =
-                await Worker.findOne({
-                    userId:
-                        req.user.id
-                });
-
-            if (!worker) {
-                return res.status(404).json({
-                    message:
-                        "Worker profile not found"
-                });
-            }
-
-            if (
-                booking.workerId.toString() !==
-                worker._id.toString()
-            ) {
-                return res.status(403).json({
-                    message:
-                        "You are not assigned to this booking"
-                });
-            }
-
-            if (
-                booking.status !==
-                "Accepted"
-            ) {
-                return res.status(400).json({
-                    message:
-                        "Only accepted bookings can be completed"
-                });
-            }
-
-            booking.status =
-                "Completed";
-
-            await booking.save();
-
-            const customer =
-                await Customer.findById(
-                    booking.customerId
-                );
-
-            if (
-                customer &&
-                customer.userId
-            ) {
-                await createNotification(
-                    customer.userId,
-                    `Your ${booking.service} booking has been completed successfully`,
-                    "Booking"
-                );
-            }
-
-            res.status(200).json({
-                message:
-                    "Booking completed successfully",
-                booking
-            });
-
-        } catch (error) {
-            res.status(500).json({
-                message:
-                    "Error completing booking",
-                error:
-                    error.message
-            });
-        }
+// =====================================================
+// GENERAL STATUS UPDATE
+// =====================================================
+router.patch("/:id/status", protect, async (req, res) => {
+    const { status } = req.body;
+    const validStatuses = ["Pending", "Accepted", "OnTheWay", "InProgress", "Completed", "Rejected", "Cancelled"];
+    if (!validStatuses.includes(status)) {
+        return res.status(400).json({
+            message: `Invalid status. Must be one of: ${validStatuses.join(", ")}`
+        });
     }
-);
 
-
-// =====================================================
-// CUSTOMER BOOKINGS
-// =====================================================
-
-router.get(
-    "/customer/:customerId",
-    protect,
-    allowRoles("Customer"),
-    async (req, res) => {
-        try {
-
-            const customer =
-                await Customer.findOne({
-                    userId:
-                        req.user.id
-                });
-
-            if (!customer) {
-                return res.status(404).json({
-                    message:
-                        "Customer profile not found"
-                });
-            }
-
-            if (
-                customer._id.toString() !==
-                req.params.customerId.toString()
-            ) {
-                return res.status(403).json({
-                    message:
-                        "You can only view your own bookings"
-                });
-            }
-
-            const bookings =
-                await Booking.find({
-                    customerId:
-                        customer._id
-                });
-
-            res.status(200).json({
-                count:
-                    bookings.length,
-                bookings
-            });
-
-        } catch (error) {
-            res.status(500).json({
-                message:
-                    "Error fetching customer bookings",
-                error:
-                    error.message
-            });
-        }
-    }
-);
-
-
-// =====================================================
-// WORKER BOOKINGS
-// =====================================================
-
-router.get(
-    "/worker/:workerId",
-    protect,
-    allowRoles("Worker"),
-    async (req, res) => {
-        try {
-
-            const worker =
-                await Worker.findOne({
-                    userId:
-                        req.user.id
-                });
-
-            if (!worker) {
-                return res.status(404).json({
-                    message:
-                        "Worker profile not found"
-                });
-            }
-
-            if (
-                worker._id.toString() !==
-                req.params.workerId.toString()
-            ) {
-                return res.status(403).json({
-                    message:
-                        "You can only view your own bookings"
-                });
-            }
-
-            const bookings =
-                await Booking.find({
-                    workerId:
-                        worker._id
-                });
-
-            res.status(200).json({
-                count:
-                    bookings.length,
-                bookings
-            });
-
-        } catch (error) {
-            res.status(500).json({
-                message:
-                    "Error fetching worker bookings",
-                error:
-                    error.message
-            });
-        }
-    }
-);
-
-
-// =====================================================
-// WORKER EARNINGS
-// =====================================================
-
-router.get(
-    "/worker/:workerId/earnings",
-    protect,
-    allowRoles("Worker"),
-    async (req, res) => {
-        try {
-
-            const worker =
-                await Worker.findOne({
-                    userId:
-                        req.user.id
-                });
-
-            if (!worker) {
-                return res.status(404).json({
-                    message:
-                        "Worker profile not found"
-                });
-            }
-
-            if (
-                worker._id.toString() !=
-                req.params.workerId.toString()
-            ) {
-                return res.status(403).json({
-                    message:
-                        "You can only view your own earnings"
-                });
-            }
-
-            const completedBookings =
-                await Booking.find({
-                    workerId:
-                        worker._id,
-                    status:
-                        "Completed"
-                });
-
-            const totalEarnings =
-                completedBookings.reduce(
-                    (total, booking) =>
-                        total +
-                        booking.amount,
-                    0
-                );
-
-            res.status(200).json({
-                workerId:
-                    worker._id,
-                completedBookings:
-                    completedBookings.length,
-                totalEarnings
-            });
-
-        } catch (error) {
-            res.status(500).json({
-                message:
-                    "Error fetching worker earnings",
-                error:
-                    error.message
-            });
-        }
-    }
-);
-
+    return updateBookingStatus(
+        req,
+        res,
+        status,
+        `Booking status updated to ${status}`,
+        (b) => `Booking #${b._id.toString().slice(-6)} status updated to ${status}`,
+        (b) => `Your booking for ${b.service} is now ${status}`
+    );
+});
 
 module.exports = router;

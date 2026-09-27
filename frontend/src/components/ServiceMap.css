@@ -1,0 +1,269 @@
+/* =========================================================
+   ServiceMap Component CSS
+   ========================================================= */
+
+.service-map-card {
+  background: #ffffff;
+  border: 1px solid var(--sd-line, #e2e8f0);
+  border-radius: var(--sd-radius-xl, 24px);
+  padding: 22px clamp(16px, 3vw, 28px);
+  box-shadow: 0 10px 25px rgba(15, 23, 42, 0.04);
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.service-map-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.map-title-group {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.map-icon-pill {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: #ecfdf5;
+  color: #0f6b5b;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.map-title-group h3 {
+  margin: 0;
+  font-size: 19px;
+  font-weight: 700;
+  color: #0f172a;
+  letter-spacing: -0.4px;
+}
+
+.map-title-group p {
+  margin: 2px 0 0;
+  font-size: 12px;
+  color: #64748b;
+}
+
+.map-stats-pill {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #0f6b5b;
+}
+
+.pin-live-icon {
+  color: #10b981;
+}
+
+/* Map Canvas */
+.map-wrapper-container {
+  position: relative;
+  width: 100%;
+  border-radius: 16px;
+  overflow: hidden;
+  border: 1px solid #e2e8f0;
+  box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.04);
+}
+
+.leaflet-map-element {
+  width: 100%;
+  height: 100%;
+  z-index: 1;
+}
+
+.map-notice-overlay {
+  position: absolute;
+  bottom: 12px;
+  left: 12px;
+  right: 12px;
+  background: rgba(255, 255, 255, 0.94);
+  backdrop-filter: blur(8px);
+  padding: 8px 14px;
+  border-radius: 10px;
+  font-size: 11px;
+  color: #475569;
+  border: 1px solid #e2e8f0;
+  z-index: 10;
+  text-align: center;
+  pointer-events: none;
+}
+
+/* Custom Marker Styles */
+.user-pulse-marker {
+  position: relative;
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.user-core-dot {
+  font-size: 22px;
+  z-index: 2;
+  filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.3));
+}
+
+.pulse-ring {
+  position: absolute;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: rgba(16, 185, 129, 0.35);
+  animation: pulseRing 1.8s infinite cubic-bezier(0.215, 0.61, 0.355, 1);
+}
+
+@keyframes pulseRing {
+  0% { transform: scale(0.6); opacity: 1; }
+  100% { transform: scale(2); opacity: 0; }
+}
+
+.worker-pin-badge {
+  background: #0f6b5b;
+  color: #ffffff;
+  padding: 4px 8px;
+  border-radius: 20px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  box-shadow: 0 4px 12px rgba(15, 107, 91, 0.35);
+  border: 2px solid #ffffff;
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.worker-pin-badge.offline {
+  background: #64748b;
+}
+
+.pin-symbol {
+  font-size: 12px;
+}
+
+.pin-rating {
+  color: #fef08a;
+  font-size: 10px;
+}
+
+/* Leaflet Popup Cards */
+.map-worker-popup-card {
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-family: inherit;
+}
+
+.popup-worker-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.popup-avatar {
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  background: #f1f5f9;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #0f6b5b;
+  font-weight: 800;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.popup-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.popup-worker-header h4 {
+  margin: 0;
+  font-size: 14px;
+  color: #0f172a;
+}
+
+.popup-worker-header small {
+  color: #64748b;
+  font-size: 11px;
+}
+
+.popup-meta-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 11px;
+}
+
+.popup-badge-score {
+  background: #ecfdf5;
+  color: #047857;
+  padding: 2px 7px;
+  border-radius: 8px;
+  font-weight: 700;
+}
+
+.popup-rating {
+  color: #d97706;
+  font-weight: 700;
+}
+
+.popup-coop-name {
+  margin: 0;
+  font-size: 11px;
+  color: #64748b;
+}
+
+.popup-book-action-btn {
+  background: #0f6b5b;
+  color: #ffffff;
+  border: none;
+  padding: 7px 12px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  margin-top: 4px;
+  text-align: center;
+  transition: 0.2s;
+}
+
+.popup-book-action-btn:hover {
+  background: #148a72;
+}
+
+.map-popup-user {
+  text-align: center;
+  padding: 4px;
+}
+
+.map-popup-user strong {
+  color: #0f6b5b;
+  font-size: 13px;
+  display: block;
+}
+
+.map-popup-user p {
+  margin: 2px 0 0;
+  font-size: 11px;
+  color: #64748b;
+}

@@ -13,7 +13,6 @@ import {
   CheckCircle2,
   Plus,
   ArrowRight,
-  Leaf,
   UserRound,
   BriefcaseBusiness,
   AlertCircle,
@@ -24,1691 +23,621 @@ import {
   Star,
   TrendingUp,
   Clock3,
-  Settings,
-  Eye,
+  Globe,
+  Bot,
+  Layers,
+  Award,
+  Calendar,
+  Check,
+  Navigation,
+  Activity
 } from "lucide-react";
 
+import logo from "../assets/Skill D Nest.jpeg";
 import api from "../services/api";
+import { translations } from "../utils/translations";
+import ServiceMap from "../components/ServiceMap";
 import "./CooperativeDashboard.css";
-
-/* =========================================
-   SERVICE IMAGES
-========================================= */
-
-const serviceImages = {
-  plumber:
-    "https://images.unsplash.com/photo-1585704032915-c3400ca199e7?auto=format&fit=crop&w=1000&q=85",
-
-  electrician:
-    "https://images.unsplash.com/photo-1621905252507-b35492cc74b4?auto=format&fit=crop&w=1000&q=85",
-
-  carpenter:
-    "https://images.unsplash.com/photo-1601058268499-e52658b8bb88?auto=format&fit=crop&w=1000&q=85",
-
-  painter:
-    "https://images.unsplash.com/photo-1562259949-e8e7689d7828?auto=format&fit=crop&w=1000&q=85",
-
-  cleaner:
-    "https://images.unsplash.com/photo-1581578731548-c64695cc6952?auto=format&fit=crop&w=1000&q=85",
-
-  mechanic:
-    "https://images.unsplash.com/photo-1487754180451-c456f719a1fc?auto=format&fit=crop&w=1000&q=85",
-
-  tutor:
-    "https://images.unsplash.com/photo-1509062522246-3755977927d7?auto=format&fit=crop&w=1000&q=85",
-
-  driver:
-    "https://images.unsplash.com/photo-1449965408869-eaa3f722e40d?auto=format&fit=crop&w=1000&q=85",
-
-  agriculture:
-    "https://images.unsplash.com/photo-1625246333195-78d9c38ad449?auto=format&fit=crop&w=1000&q=85",
-
-  general:
-    "https://images.unsplash.com/photo-1556761175-b413da4baf72?auto=format&fit=crop&w=1000&q=85",
-};
-
-
-/* =========================================
-   SERVICE HELPERS
-========================================= */
-
-const getServiceKey = (service = "") => {
-  const value = String(service).toLowerCase();
-
-  if (value.includes("plumb")) return "plumber";
-  if (value.includes("electric")) return "electrician";
-  if (value.includes("carpent")) return "carpenter";
-  if (value.includes("paint")) return "painter";
-  if (value.includes("clean")) return "cleaner";
-  if (value.includes("mechan")) return "mechanic";
-  if (value.includes("tutor") || value.includes("teach")) {
-    return "tutor";
-  }
-
-  if (value.includes("driver") || value.includes("driv")) {
-    return "driver";
-  }
-
-  if (
-    value.includes("agri") ||
-    value.includes("farm") ||
-    value.includes("labour") ||
-    value.includes("labor")
-  ) {
-    return "agriculture";
-  }
-
-  return "general";
-};
-
-
-const getServiceImage = (service) => {
-  return serviceImages[getServiceKey(service)];
-};
-
-
-const getServiceIcon = (service) => {
-  const key = getServiceKey(service);
-
-  const icons = {
-    plumber: Wrench,
-    electrician: Wrench,
-    carpenter: BriefcaseBusiness,
-    painter: BriefcaseBusiness,
-    cleaner: Sparkles,
-    mechanic: Wrench,
-    tutor: UserRound,
-    driver: BriefcaseBusiness,
-    agriculture: Leaf,
-    general: BriefcaseBusiness,
-  };
-
-  return icons[key] || BriefcaseBusiness;
-};
-
-
-const normalizeStatus = (status) => {
-  if (!status) return "Pending";
-
-  const value = String(status).toLowerCase();
-
-  if (
-    value.includes("verif") ||
-    value.includes("approv")
-  ) {
-    return "Verified";
-  }
-
-  if (value.includes("reject")) {
-    return "Rejected";
-  }
-
-  return "Pending";
-};
-
-
-/* =========================================
-   COMPONENT
-========================================= */
 
 function CooperativeDashboard() {
   const location = useLocation();
   const navigate = useNavigate();
 
+  const [lang, setLang] = useState(localStorage.getItem("lang") || "en");
+  const t = translations[lang] || translations.en;
+
   const [society, setSociety] = useState(null);
   const [workers, setWorkers] = useState([]);
+  const [bookings, setBookings] = useState([]);
+  const [forecast, setForecast] = useState(null);
+  const [allocations, setAllocations] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [aiLoading, setAiLoading] = useState(false);
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
+  const [activeSection, setActiveSection] = useState("overview"); // overview, workers, bookings, map, ai-forecast
 
+  const toggleLanguage = () => {
+    const next = lang === "en" ? "hi" : "en";
+    setLang(next);
+    localStorage.setItem("lang", next);
+  };
 
-  /* =========================================
-     LOAD SOCIETY + WORKERS
-  ========================================= */
+  const loadDashboard = async () => {
+    try {
+      setLoading(true);
+      setError("");
 
-  useEffect(() => {
-    let mounted = true;
+      // 1. Cooperatives
+      const coopRes = await api.get("/cooperatives");
+      const societies = coopRes.data?.cooperatives || coopRes.data || [];
 
-    const loadDashboard = async () => {
-      try {
-        setLoading(true);
-        setError("");
+      const user = JSON.parse(localStorage.getItem("user") || "{}");
 
-        const response = await api.get("/cooperatives");
+      const currentSociety =
+        societies.find((item) => item.phone && item.phone === user.phone) ||
+        societies.find((item) => item._id && user.cooperativeId && item._id === user.cooperativeId) ||
+        societies[0] ||
+        null;
 
-        const societies =
-          response.data?.cooperatives ||
-          response.data?.data ||
-          response.data ||
-          [];
+      setSociety(currentSociety);
 
-        const user = JSON.parse(
-          localStorage.getItem("user") || "{}"
-        );
-
-        const currentSociety =
-          societies.find(
-            (item) =>
-              item.phone &&
-              item.phone === user.phone
-          ) ||
-          societies.find(
-            (item) =>
-              item._id &&
-              user.cooperativeId &&
-              item._id === user.cooperativeId
-          ) ||
-          societies[0] ||
-          null;
-
-        if (!mounted) return;
-
-        setSociety(currentSociety);
-
-        if (currentSociety?._id) {
-          try {
-            const workerResponse = await api.get(
-              `/cooperatives/${currentSociety._id}/workers`
-            );
-
-            if (!mounted) return;
-
-            const workerData =
-              workerResponse.data?.workers ||
-              workerResponse.data?.data ||
-              workerResponse.data ||
-              [];
-
-            setWorkers(
-              Array.isArray(workerData)
-                ? workerData
-                : []
-            );
-          } catch (workerError) {
-            console.error(
-              "Worker loading error:",
-              workerError
-            );
-
-            if (mounted) {
-              setWorkers([]);
-            }
-          }
-        } else {
-          setWorkers([]);
-        }
-      } catch (err) {
-        console.error(
-          "Dashboard loading error:",
-          err
-        );
-
-        if (mounted) {
-          setError(
-            err.response?.data?.message ||
-              "Unable to load cooperative dashboard."
-          );
-        }
-      } finally {
-        if (mounted) {
-          setLoading(false);
+      if (currentSociety?._id) {
+        // 2. Cooperative Workers
+        try {
+          const workerRes = await api.get(`/cooperatives/${currentSociety._id}/workers`);
+          const workerData = workerRes.data?.workers || workerRes.data || [];
+          setWorkers(Array.isArray(workerData) ? workerData : []);
+        } catch (err) {
+          console.warn("Workers fetch warning:", err.message);
         }
       }
-    };
 
+      // 3. Cooperative Bookings
+      try {
+        const bookingRes = await api.get("/bookings");
+        const bookingData = bookingRes.data?.bookings || bookingRes.data || [];
+        setBookings(Array.isArray(bookingData) ? bookingData : []);
+      } catch (err) {
+        console.warn("Bookings fetch warning:", err.message);
+      }
+
+      // 4. AI Demand Forecast & Workforce Allocation
+      try {
+        setAiLoading(true);
+        const forecastRes = await api.get("/ai/demand-forecast");
+        setForecast(forecastRes.data);
+
+        const allocRes = await api.get("/ai/workforce-allocation");
+        setAllocations(allocRes.data);
+      } catch (aiErr) {
+        console.warn("AI intelligence warning:", aiErr.message);
+      } finally {
+        setAiLoading(false);
+      }
+    } catch (err) {
+      console.error("Dashboard error:", err);
+      setError(err.response?.data?.message || "Unable to load cooperative dashboard.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
     loadDashboard();
-
-    return () => {
-      mounted = false;
-    };
   }, [location.key]);
-
-
-  /* =========================================
-     ACTIONS
-  ========================================= */
 
   const logout = () => {
     localStorage.removeItem("token");
     localStorage.removeItem("user");
-
     navigate("/cooperative-login");
   };
 
-
   const handleAddWorker = () => {
     navigate("/add-worker", {
-      state: {
-        cooperativeId: society?._id,
-      },
+      state: { cooperativeId: society?._id }
     });
   };
-
 
   const handleWorkerManagement = () => {
     navigate("/worker-management", {
-      state: {
-        cooperativeId: society?._id,
-      },
+      state: { cooperativeId: society?._id }
     });
   };
 
-
-  const scrollToSection = (id) => {
-    document
-      .getElementById(id)
-      ?.scrollIntoView({
-        behavior: "smooth",
-        block: "start",
-      });
+  // Accept / Complete booking from cooperative side
+  const handleBookingAction = async (bookingId, action) => {
+    try {
+      await api.patch(`/bookings/${bookingId}/${action}`);
+      loadDashboard();
+    } catch (err) {
+      alert(err.response?.data?.message || `Failed to ${action} booking.`);
+    }
   };
-
-
-  const handleRefresh = () => {
-    window.location.reload();
-  };
-
-
-  /* =========================================
-     FILTER WORKERS
-  ========================================= */
 
   const filteredWorkers = useMemo(() => {
     const query = search.trim().toLowerCase();
-
     if (!query) return workers;
 
     return workers.filter((worker) => {
-      const name = String(
-        worker.name ||
-          worker.fullName ||
-          worker.workerName ||
-          ""
-      ).toLowerCase();
-
-      const skill = String(
-        worker.skill ||
-          worker.skills ||
-          worker.service ||
-          worker.category ||
-          ""
-      ).toLowerCase();
-
-      const phone = String(
-        worker.phone || ""
-      ).toLowerCase();
-
-      return (
-        name.includes(query) ||
-        skill.includes(query) ||
-        phone.includes(query)
-      );
+      const name = String(worker.name || "").toLowerCase();
+      const skills = Array.isArray(worker.skills)
+        ? worker.skills.join(" ").toLowerCase()
+        : String(worker.skills || "").toLowerCase();
+      const phone = String(worker.phone || "").toLowerCase();
+      return name.includes(query) || skills.includes(query) || phone.includes(query);
     });
   }, [workers, search]);
 
-
-  /* =========================================
-     SERVICES
-  ========================================= */
-
-  const services = useMemo(() => {
-    const serviceSet = new Set();
-
-    workers.forEach((worker) => {
-      const skill =
-        worker.skill ||
-        worker.skills ||
-        worker.service ||
-        worker.category;
-
-      if (Array.isArray(skill)) {
-        skill.forEach((item) => {
-          if (item) {
-            serviceSet.add(String(item));
-          }
-        });
-      } else if (skill) {
-        serviceSet.add(String(skill));
-      }
-    });
-
-    const defaultServices = [
-      "Plumber",
-      "Electrician",
-      "Carpenter",
-      "Painter",
-      "Cleaner",
-      "Mechanic",
-      "Tutor",
-      "Driver",
-      "Agriculture Labour",
-    ];
-
-    if (serviceSet.size === 0) {
-      return defaultServices;
-    }
-
-    return Array.from(serviceSet);
-  }, [workers]);
-
-
-  const filteredServices = useMemo(() => {
-    const query = search.trim().toLowerCase();
-
-    if (!query) return services;
-
-    return services.filter((service) =>
-      service
-        .toLowerCase()
-        .includes(query)
-    );
-  }, [services, search]);
-
-
-  /* =========================================
-     DASHBOARD DATA
-  ========================================= */
-
-  const verificationStatus = normalizeStatus(
-    society?.status ||
-      society?.verificationStatus ||
-      society?.verifiedStatus
-  );
-
-  const isVerified =
-    verificationStatus === "Verified";
-
-  const totalWorkers = workers.length;
-
-  const totalServices = services.length;
-
-  const totalBookings = 0;
-
-  const opportunityScore = Math.min(
-    100,
-    40 +
-      totalWorkers * 5 +
-      totalServices * 5 +
-      (isVerified ? 20 : 0)
-  );
-
-
-  const societyName =
-    society?.name ||
-    society?.societyName ||
-    society?.cooperativeName ||
-    "Your Cooperative Society";
-
-
-  const societyPhone =
-    society?.phone ||
-    "Not available";
-
-
-  const societyLocation =
-    society?.location ||
-    society?.address ||
-    society?.city ||
-    "Local community";
-
-
-  /* =========================================
-     LOADING
-  ========================================= */
+  const societyName = society?.societyName || society?.name || "Cooperative Society";
+  const isVerified = society?.verificationStatus === "Verified";
+  const activeWorkersCount = workers.filter(w => w.availability).length;
+  const completedBookingsCount = bookings.filter(b => b.status === "Completed").length;
+  const workersWithCoords = workers.filter(w => w.latitude && w.longitude);
 
   if (loading) {
     return (
       <div className="dashboard-loading">
         <div className="loading-card">
-
-          <div className="loading-logo">
-            S
-          </div>
-
+          <img src={logo} alt="SkillDnest Logo" className="loading-brand-img" />
           <div className="loading-spinner">
-            <RefreshCw size={22} />
+            <RefreshCw size={24} />
           </div>
-
-          <h2>Loading SkillNest</h2>
-
-          <p>
-            Preparing your cooperative dashboard...
-          </p>
-
+          <h2>Loading SkillDnest Cooperative Portal</h2>
+          <p>Connecting with cooperative registry and workforce intelligence...</p>
         </div>
       </div>
     );
   }
 
-
-  /* =========================================
-     MAIN UI
-  ========================================= */
-
   return (
     <div className="cooperative-dashboard">
-
-      {/* =====================================
-          NAVBAR
-      ===================================== */}
-
+      {/* NAVBAR */}
       <header className="dashboard-navbar">
-
         <div className="navbar-left">
-
-          <button
-            className="brand"
-            onClick={() =>
-              navigate(
-                "/cooperative-dashboard"
-              )
-            }
-          >
-            <div className="brand-logo">
-              S
-            </div>
-
+          <button className="brand" onClick={() => navigate("/cooperative-dashboard")}>
+            <img src={logo} alt="SkillDnest Logo" className="navbar-logo-img" />
             <div>
-              <div className="brand-name">
-                SkillNest
-              </div>
-
-              <div className="brand-tagline">
-                Cooperative Services Network
-              </div>
+              <div className="brand-name">{t.brandName || "SkillDnest"}</div>
+              <div className="brand-tagline">Cooperative Administration Portal</div>
             </div>
           </button>
-
         </div>
-
 
         <div className="navbar-center">
-
           <div className="dashboard-search">
-
             <Search size={18} />
-
             <input
               type="text"
-              placeholder="Search workers or services..."
+              placeholder="Search workers, skills, or phone..."
               value={search}
-              onChange={(event) =>
-                setSearch(
-                  event.target.value
-                )
-              }
+              onChange={(e) => setSearch(e.target.value)}
             />
-
             {search && (
-              <button
-                className="search-clear"
-                onClick={() =>
-                  setSearch("")
-                }
-                aria-label="Clear search"
-              >
-                ×
-              </button>
+              <button className="search-clear" onClick={() => setSearch("")}>×</button>
             )}
-
           </div>
-
         </div>
 
-
         <div className="navbar-right">
+          <button className="nav-action-pill" onClick={toggleLanguage} title="Change Language">
+            <Globe size={16} />
+            <span>{lang === "en" ? "हिन्दी" : "English"}</span>
+          </button>
 
           <div className="portal-label">
             <Building2 size={17} />
-            <span>
-              Cooperative Portal
-            </span>
+            <span>{societyName}</span>
           </div>
 
-          <button
-            className="nav-icon-btn"
-            title="Notifications"
-            aria-label="Notifications"
-          >
-            <Bell size={19} />
-            <span className="notification-dot"></span>
+          <button className="logout-btn" onClick={logout}>
+            <LogOut size={16} />
+            {t.logout}
           </button>
-
-          <button
-            className="logout-btn"
-            onClick={logout}
-          >
-            <LogOut size={17} />
-            Logout
-          </button>
-
         </div>
-
       </header>
 
-
-      {/* =====================================
-          MAIN
-      ===================================== */}
+      {/* SUBNAV TABS */}
+      <div className="coop-subnav-tabs">
+        <button
+          className={activeSection === "overview" ? "subnav-btn active" : "subnav-btn"}
+          onClick={() => setActiveSection("overview")}
+        >
+          <TrendingUp size={16} /> Overview & Stats
+        </button>
+        <button
+          className={activeSection === "workers" ? "subnav-btn active" : "subnav-btn"}
+          onClick={() => setActiveSection("workers")}
+        >
+          <Users size={16} /> Workforce ({workers.length})
+        </button>
+        <button
+          className={activeSection === "bookings" ? "subnav-btn active" : "subnav-btn"}
+          onClick={() => setActiveSection("bookings")}
+        >
+          <Calendar size={16} /> Bookings ({bookings.length})
+        </button>
+        <button
+          className={activeSection === "map" ? "subnav-btn active" : "subnav-btn"}
+          onClick={() => setActiveSection("map")}
+        >
+          <Navigation size={16} /> Workforce Map
+        </button>
+        <button
+          className={activeSection === "ai-forecast" ? "subnav-btn active" : "subnav-btn"}
+          onClick={() => setActiveSection("ai-forecast")}
+        >
+          <Sparkles size={16} /> {t.aiForecast || "AI Forecast & Allocation"}
+        </button>
+      </div>
 
       <main className="dashboard-main">
-
-        {/* ERROR */}
-
         {error && (
           <div className="dashboard-error">
-
             <div>
               <AlertCircle size={19} />
               <span>{error}</span>
             </div>
-
-            <button
-              onClick={handleRefresh}
-            >
-              <RefreshCw size={16} />
-              Retry
+            <button onClick={loadDashboard}>
+              <RefreshCw size={16} /> Retry
             </button>
-
           </div>
         )}
 
-
-        {/* WELCOME */}
-
-        <section className="dashboard-welcome-strip">
-
-          <div>
-
-            <div className="welcome-small">
-              COOPERATIVE MANAGEMENT
-            </div>
-
-            <h1>
-              Welcome to{" "}
-              <span>{societyName}</span>
-            </h1>
-
-            <p>
-              Manage your skilled workforce
-              and connect local talent with
-              new opportunities.
-            </p>
-
-          </div>
-
-
-          <div className="welcome-actions">
-
-            <button
-              className="secondary-dashboard-btn"
-              onClick={handleWorkerManagement}
-            >
-              <Users size={17} />
-              View Workers
-            </button>
-
-            <button
-              className="primary-dashboard-btn"
-              onClick={handleAddWorker}
-            >
-              <Plus size={18} />
-              Add Worker
-            </button>
-
-          </div>
-
-        </section>
-
-
-        {/* =====================================
-            HERO
-        ===================================== */}
-
-        <section className="dashboard-hero">
-
-          <div className="hero-content">
-
-            <div className="hero-badge">
-              <Sparkles size={15} />
-              Empowering Local Skills
-            </div>
-
-            <h2>
-              Turn local skills into
-              <br />
-              <span>
-                local opportunities.
-              </span>
-            </h2>
-
-            <p>
-              SkillNest helps cooperative
-              societies give their workers
-              better visibility, trusted
-              digital identities and fair
-              access to service opportunities.
-            </p>
-
-            <div className="hero-actions">
-
-              <button
-                className="hero-primary-btn"
-                onClick={handleAddWorker}
-              >
-                <Plus size={17} />
-                Register New Worker
-              </button>
-
-              <button
-                className="hero-secondary-btn"
-                onClick={() =>
-                  scrollToSection(
-                    "services-section"
-                  )
-                }
-              >
-                Explore Services
-                <ArrowRight size={17} />
-              </button>
-
-            </div>
-
-          </div>
-
-
-          <div className="hero-visual">
-
-            <img
-              src="https://up.yimg.com/ib/th/id/OIP.IXqQCrv0h7ksygnnXzv1FgHaG0?pid=Api&rs=1&c=1&qlt=95&w=123&h=113"
-              alt="Agriculture and local workers"
-            />
-
-            <div className="hero-floating-card">
-
-              <div className="floating-icon">
-                <ShieldCheck size={21} />
-              </div>
-
+        {/* SECTION 1: OVERVIEW & STATS */}
+        {activeSection === "overview" && (
+          <>
+            {/* WELCOME STRIP */}
+            <section className="dashboard-welcome-strip">
               <div>
-                <strong>
-                  Trusted Network
-                </strong>
-
-                <span>
-                  Verified cooperative workers
-                </span>
-              </div>
-
-            </div>
-
-          </div>
-
-        </section>
-
-
-        {/* =====================================
-            STATS
-        ===================================== */}
-
-        <section className="dashboard-stats">
-
-          <div className="stat-card">
-
-            <div className="stat-icon green">
-              <ShieldCheck size={22} />
-            </div>
-
-            <div>
-              <span>
-                Verification
-              </span>
-
-              <strong>
-                {isVerified
-                  ? "Verified"
-                  : "Pending"}
-              </strong>
-            </div>
-
-            <CheckCircle2
-              className="stat-check"
-              size={19}
-            />
-
-          </div>
-
-
-          <div className="stat-card">
-
-            <div className="stat-icon blue">
-              <Users size={22} />
-            </div>
-
-            <div>
-              <span>
-                Registered Workers
-              </span>
-
-              <strong>
-                {totalWorkers}
-              </strong>
-            </div>
-
-            <TrendingUp
-              className="stat-check"
-              size={19}
-            />
-
-          </div>
-
-
-          <div className="stat-card">
-
-            <div className="stat-icon orange">
-              <Wrench size={22} />
-            </div>
-
-            <div>
-              <span>
-                Services Available
-              </span>
-
-              <strong>
-                {totalServices}
-              </strong>
-            </div>
-
-            <ChevronRight
-              className="stat-check"
-              size={19}
-            />
-
-          </div>
-
-
-          <div className="stat-card">
-
-            <div className="stat-icon purple">
-              <CalendarCheck size={22} />
-            </div>
-
-            <div>
-              <span>
-                Total Bookings
-              </span>
-
-              <strong>
-                {totalBookings}
-              </strong>
-            </div>
-
-            <Clock3
-              className="stat-check"
-              size={19}
-            />
-
-          </div>
-
-        </section>
-
-
-        {/* =====================================
-            QUICK ACTIONS
-        ===================================== */}
-
-        <section className="quick-actions-section">
-
-          <div className="section-heading">
-
-            <div>
-
-              <span className="section-kicker">
-                QUICK ACTIONS
-              </span>
-
-              <h2>
-                Manage your cooperative
-              </h2>
-
-            </div>
-
-          </div>
-
-
-          <div className="quick-actions-grid">
-
-            <button
-              className="quick-action-card"
-              onClick={handleAddWorker}
-            >
-              <div className="quick-action-icon">
-                <Plus size={22} />
-              </div>
-
-              <div>
-                <strong>
-                  Add a Worker
-                </strong>
-
-                <span>
-                  Register a skilled worker
-                </span>
-              </div>
-
-              <ArrowRight size={18} />
-            </button>
-
-
-            <button
-              className="quick-action-card"
-              onClick={handleWorkerManagement}
-            >
-              <div className="quick-action-icon">
-                <Users size={22} />
-              </div>
-
-              <div>
-                <strong>
-                  Manage Workers
-                </strong>
-
-                <span>
-                  View your registered workforce
-                </span>
-              </div>
-
-              <ArrowRight size={18} />
-            </button>
-
-
-            <button
-              className="quick-action-card"
-              onClick={() =>
-                scrollToSection(
-                  "services-section"
-                )
-              }
-            >
-              <div className="quick-action-icon">
-                <Wrench size={22} />
-              </div>
-
-              <div>
-                <strong>
-                  Explore Services
-                </strong>
-
-                <span>
-                  See available local skills
-                </span>
-              </div>
-
-              <ArrowRight size={18} />
-            </button>
-
-
-            <button
-              className="quick-action-card"
-              type="button"
-            >
-              <div className="quick-action-icon">
-                <Settings size={22} />
-              </div>
-
-              <div>
-                <strong>
-                  Society Settings
-                </strong>
-
-                <span>
-                  Manage cooperative details
-                </span>
-              </div>
-
-              <ArrowRight size={18} />
-            </button>
-
-          </div>
-
-        </section>
-
-
-        {/* =====================================
-            SOCIETY INFORMATION
-        ===================================== */}
-
-        <section className="society-section">
-
-          <div className="section-heading">
-
-            <div>
-
-              <span className="section-kicker">
-                YOUR COOPERATIVE
-              </span>
-
-              <h2>
-                Society information
-              </h2>
-
-            </div>
-
-
-            <div
-              className={`verification-pill ${
-                isVerified
-                  ? "verified"
-                  : "pending"
-              }`}
-            >
-              <ShieldCheck size={16} />
-              {verificationStatus}
-            </div>
-
-          </div>
-
-
-          <div className="society-info-card">
-
-            <div className="society-profile">
-
-              <div className="society-avatar">
-                <Building2 size={28} />
-              </div>
-
-              <div>
-
-                <h3>
-                  {societyName}
-                </h3>
-
+                <div className="welcome-small">COOPERATIVE SERVICES MANAGEMENT</div>
+                <h1>
+                  Welcome to <span>{societyName}</span>
+                </h1>
                 <p>
-                  Cooperative service
-                  organization
+                  District: <strong>{society?.district || "Local Region"}</strong> • Registration: <strong>{society?.registrationNumber || "REG-COOP-001"}</strong>
                 </p>
-
-                <div className="society-mini-tags">
-
-                  <span>
-                    <MapPin size={13} />
-                    {societyLocation}
-                  </span>
-
-                  <span>
-                    <Phone size={13} />
-                    {societyPhone}
-                  </span>
-
-                </div>
-
               </div>
 
-            </div>
+              <div className="welcome-actions">
+                <button className="secondary-dashboard-btn" onClick={handleWorkerManagement}>
+                  <Users size={17} />
+                  Manage Workforce
+                </button>
+                <button className="primary-dashboard-btn" onClick={handleAddWorker}>
+                  <Plus size={18} />
+                  Add New Worker
+                </button>
+              </div>
+            </section>
 
-
-            <div className="verification-box">
-
-              <div className="verification-top">
-
-                <div className="verification-icon">
+            {/* KEY METRICS CARDS */}
+            <section className="dashboard-stats">
+              <div className="stat-card">
+                <div className="stat-icon green">
                   <ShieldCheck size={22} />
                 </div>
-
                 <div>
-
-                  <strong>
-                    {isVerified
-                      ? "Society Verified"
-                      : "Verification Pending"}
-                  </strong>
-
-                  <span>
-                    {isVerified
-                      ? "Your cooperative is part of the trusted SkillNest network."
-                      : "Complete verification to unlock full platform benefits."}
-                  </span>
-
+                  <span>Society Verification</span>
+                  <strong>{isVerified ? "Verified Society" : "Pending Verification"}</strong>
                 </div>
-
+                <CheckCircle2 className="stat-check" size={19} />
               </div>
 
-
-              <div className="verification-divider"></div>
-
-
-              <div className="verification-bottom">
-                <CheckCircle2 size={17} />
-
-                <span>
-                  Digital cooperative identity
-                </span>
+              <div className="stat-card">
+                <div className="stat-icon blue">
+                  <Users size={22} />
+                </div>
+                <div>
+                  <span>Total Workers</span>
+                  <strong>{workers.length}</strong>
+                </div>
+                <TrendingUp className="stat-check" size={19} />
               </div>
 
-            </div>
-
-          </div>
-
-        </section>
-
-
-        {/* =====================================
-            SERVICES
-        ===================================== */}
-
-        <section
-          className="services-section"
-          id="services-section"
-        >
-
-          <div className="section-heading">
-
-            <div>
-
-              <span className="section-kicker">
-                SERVICE NETWORK
-              </span>
-
-              <h2>
-                Skills available in your network
-              </h2>
-
-              <p>
-                Make local skills easier for
-                customers to discover and book.
-              </p>
-
-            </div>
-
-          </div>
-
-
-          <div className="services-grid">
-
-            {filteredServices.map(
-              (service) => {
-
-                const Icon =
-                  getServiceIcon(service);
-
-                return (
-                  <div
-                    className="service-card"
-                    key={service}
-                  >
-
-                    <div className="service-image">
-
-                      <img
-                        src={getServiceImage(
-                          service
-                        )}
-                        alt={service}
-                        loading="lazy"
-                      />
-
-                      <div className="service-icon-badge">
-                        <Icon size={18} />
-                      </div>
-
-                    </div>
-
-
-                    <div className="service-content">
-
-                      <div className="service-title-line">
-
-                        <h3>
-                          {service}
-                        </h3>
-
-                        <span className="service-rating">
-                          <Star size={13} />
-                          4.8
-                        </span>
-
-                      </div>
-
-
-                      <p>
-                        Skilled workers
-                        available through
-                        your cooperative.
-                      </p>
-
-
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setSearch(service)
-                        }
-                      >
-                        Find workers
-                        <ChevronRight size={15} />
-                      </button>
-
-                    </div>
-
-                  </div>
-                );
-              }
-            )}
-
-          </div>
-
-        </section>
-
-
-        {/* =====================================
-            AI INSIGHT
-        ===================================== */}
-
-        <section className="ai-insight-card">
-
-          <div className="ai-insight-icon">
-            <Sparkles size={25} />
-          </div>
-
-          <div className="ai-insight-content">
-
-            <span>
-              AI-POWERED INSIGHT
-            </span>
-
-            <h3>
-              Grow your cooperative's
-              opportunity network
-            </h3>
-
-            <p>
-              SkillNest can use worker skills,
-              availability and service demand
-              to help cooperatives identify new
-              opportunities and improve worker
-              visibility.
-            </p>
-
-          </div>
-
-
-          <div className="ai-score-circle">
-
-            <strong>
-              {opportunityScore}
-            </strong>
-
-            <span>
-              Network
-              <br />
-              Score
-            </span>
-
-          </div>
-
-        </section>
-
-
-        {/* =====================================
-            WORKERS
-        ===================================== */}
-
-        <section
-          className="workers-section"
-          id="workers-section"
-        >
-
-          <div className="section-heading">
-
-            <div>
-
-              <span className="section-kicker">
-                WORKFORCE
-              </span>
-
-              <h2>
-                Your cooperative workers
-              </h2>
-
-              <p>
-                A digital identity for every
-                skilled worker.
-              </p>
-
-            </div>
-
-
-            <button
-              className="primary-dashboard-btn"
-              onClick={handleAddWorker}
-            >
-              <Plus size={17} />
-              Add Worker
-            </button>
-
-          </div>
-
-
-          {filteredWorkers.length === 0 ? (
-
-            <div className="empty-workers-card">
-
-              <div className="empty-workers-icon">
-                <Users size={28} />
+              <div className="stat-card">
+                <div className="stat-icon purple">
+                  <CalendarCheck size={22} />
+                </div>
+                <div>
+                  <span>Active Bookings</span>
+                  <strong>{bookings.length}</strong>
+                </div>
+                <Clock3 className="stat-check" size={19} />
               </div>
 
-              <h3>
-                No workers found
-              </h3>
+              <div className="stat-card">
+                <div className="stat-icon orange">
+                  <Award size={22} />
+                </div>
+                <div>
+                  <span>Completed Jobs</span>
+                  <strong>{completedBookingsCount}</strong>
+                </div>
+                <Star className="stat-check" size={19} />
+              </div>
+            </section>
 
-              <p>
-                {search
-                  ? "Try a different worker name or skill."
-                  : "Start building your cooperative workforce by adding your first worker."}
-              </p>
+            {/* EMBEDDED WORKFORCE MAP OVERVIEW */}
+            <ServiceMap
+              title="Workforce Location Overview"
+              subtitle={`Geospatial deployment of ${workers.length} registered cooperative specialists in ${society?.district || "your region"}.`}
+              workers={workers}
+              userLocation={society?.district || "Satna, MP"}
+              height="360px"
+            />
 
-              {!search && (
-                <button
-                  className="primary-dashboard-btn"
-                  onClick={handleAddWorker}
-                >
-                  <Plus size={17} />
-                  Add First Worker
+            {/* AI DEMAND FORECASTING HIGHLIGHT */}
+            <section className="dashboard-forecast-banner">
+              <div className="forecast-banner-header">
+                <div className="ai-badge-pill">
+                  <Bot size={17} />
+                  <span>Gemini AI Demand Intelligence</span>
+                </div>
+                <button className="text-link-btn" onClick={() => setActiveSection("ai-forecast")}>
+                  View Full Forecast & Allocation Insights <ArrowRight size={15} />
                 </button>
-              )}
+              </div>
 
-            </div>
-
-          ) : (
-
-            <div className="workers-grid">
-
-              {filteredWorkers.map(
-                (worker, index) => {
-
-                  const workerName =
-                    worker.name ||
-                    worker.fullName ||
-                    worker.workerName ||
-                    `Worker ${index + 1}`;
-
-                  const workerSkill =
-                    worker.skill ||
-                    worker.skills ||
-                    worker.service ||
-                    worker.category ||
-                    "Skilled Professional";
-
-                  const workerPhone =
-                    worker.phone ||
-                    "Phone not available";
-
-                  const workerStatus =
-                    normalizeStatus(
-                      worker.status ||
-                        worker.verificationStatus
-                    );
-
-                  return (
-                    <div
-                      className="worker-card"
-                      key={
-                        worker._id || index
-                      }
-                    >
-
-                      <div className="worker-card-top">
-
-                        <div className="worker-avatar">
-                          <UserRound size={25} />
-                        </div>
-
-                        <div className="worker-status">
-                          <CheckCircle2 size={13} />
-                          {workerStatus}
-                        </div>
-
-                      </div>
-
-
-                      <div className="worker-card-body">
-
-                        <h3>
-                          {workerName}
-                        </h3>
-
-                        <p className="worker-skill">
-                          {Array.isArray(
-                            workerSkill
-                          )
-                            ? workerSkill.join(
-                                ", "
-                              )
-                            : workerSkill}
-                        </p>
-
-                        <div className="worker-info-row">
-                          <Phone size={14} />
-                          <span>
-                            {workerPhone}
-                          </span>
-                        </div>
-
-                        <div className="worker-info-row">
-                          <MapPin size={14} />
-                          <span>
-                            {worker.location ||
-                              "Local cooperative network"}
-                          </span>
-                        </div>
-
-                      </div>
-
-
-                      <div className="worker-card-footer">
-
-                        <div className="worker-rating">
-                          <Star size={14} />
-
-                          <strong>
-                            {worker.rating ||
-                              "New"}
-                          </strong>
-                        </div>
-
-
-                        <button
-                          className="worker-view-btn"
-                          type="button"
-                        >
-                          <Eye size={15} />
-                          View
-                        </button>
-
-                      </div>
-
+              <div className="forecast-quick-cards">
+                {forecast?.forecasts?.slice(0, 3).map((item, idx) => (
+                  <div className="forecast-mini-card" key={idx}>
+                    <div className="forecast-trend-tag">
+                      <TrendingUp size={14} /> {item.trend}
                     </div>
-                  );
-                }
-              )}
+                    <h3>{item.category}</h3>
+                    <p>{item.reason}</p>
+                    <div className="forecast-action-tip">
+                      💡 {item.recommendedAllocation}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </section>
+          </>
+        )}
 
-            </div>
-          )}
-
-        </section>
-
-
-        {/* =====================================
-            NETWORK OVERVIEW
-        ===================================== */}
-
-        <section className="network-overview-section">
-
-          <div className="section-heading">
-
-            <div>
-
-              <span className="section-kicker">
-                COOPERATIVE IMPACT
-              </span>
-
-              <h2>
-                Your network at a glance
-              </h2>
-
+        {/* SECTION 2: WORKFORCE MANAGEMENT */}
+        {activeSection === "workers" && (
+          <section className="coop-workers-section">
+            <div className="section-header-row">
+              <div>
+                <h2>Cooperative Workforce ({filteredWorkers.length})</h2>
+                <p>All workers registered under {societyName} with skills, contact and availability.</p>
+              </div>
+              <button className="primary-dashboard-btn" onClick={handleAddWorker}>
+                <Plus size={16} /> Add Worker
+              </button>
             </div>
 
-          </div>
-
-
-          <div className="network-overview-grid">
-
-            <div className="network-overview-card">
-
-              <div className="network-card-heading">
-
-                <div className="network-card-icon">
-                  <Users size={20} />
-                </div>
-
-                <span>
-                  Worker Coverage
-                </span>
-
+            {filteredWorkers.length === 0 ? (
+              <div className="empty-state-box">
+                <Users size={40} />
+                <h3>No workers found</h3>
+                <p>Register workers under your cooperative to start receiving community bookings.</p>
+                <button onClick={handleAddWorker}>+ Register Worker</button>
               </div>
+            ) : (
+              <div className="coop-workers-table-card">
+                <table className="coop-table">
+                  <thead>
+                    <tr>
+                      <th>Worker</th>
+                      <th>Skills</th>
+                      <th>Location</th>
+                      <th>Experience</th>
+                      <th>Rating</th>
+                      <th>Availability</th>
+                      <th>Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredWorkers.map((worker) => {
+                      const skills = Array.isArray(worker.skills)
+                        ? worker.skills.join(", ")
+                        : worker.skills || "General";
 
-              <div className="network-number">
-                {totalWorkers}
-                <small>
-                  workers
-                </small>
+                      return (
+                        <tr key={worker._id}>
+                          <td>
+                            <div className="table-worker-cell">
+                              <div className="table-avatar">
+                                {worker.photo ? <img src={worker.photo} alt={worker.name} /> : <UserRound size={20} />}
+                              </div>
+                              <div>
+                                <strong>{worker.name}</strong>
+                                <small>{worker.phone}</small>
+                              </div>
+                            </div>
+                          </td>
+                          <td><span className="table-skill-badge">{skills}</span></td>
+                          <td>{worker.location || "Local District"}</td>
+                          <td>{worker.experience || 1} yrs</td>
+                          <td>⭐ {Number(worker.rating || 4.8).toFixed(1)}</td>
+                          <td>
+                            <span className={`status-tag ${worker.availability ? "available" : "offline"}`}>
+                              {worker.availability ? "Available" : "Busy"}
+                            </span>
+                          </td>
+                          <td>
+                            <span className="status-tag verified">
+                              <CheckCircle2 size={12} /> {worker.verificationStatus || "Verified"}
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
               </div>
+            )}
+          </section>
+        )}
 
-              <p>
-                Skilled people represented
-                by your cooperative.
-              </p>
+        {/* SECTION 3: BOOKINGS OVERVIEW */}
+        {activeSection === "bookings" && (
+          <section className="coop-bookings-section">
+            <div className="section-header-row">
+              <div>
+                <h2>Customer Service Bookings ({bookings.length})</h2>
+                <p>Track all active and past service requests for workers in your cooperative.</p>
+              </div>
+            </div>
 
-              <div className="network-progress">
+            {bookings.length === 0 ? (
+              <div className="empty-state-box">
+                <Calendar size={40} />
+                <h3>No customer bookings yet</h3>
+                <p>When customers match and book services with your workers, they will appear here in real-time.</p>
+              </div>
+            ) : (
+              <div className="coop-bookings-grid">
+                {bookings.map((booking) => (
+                  <div className="coop-booking-card" key={booking._id}>
+                    <div className="coop-booking-header">
+                      <div>
+                        <h3>{booking.service}</h3>
+                        <small>Booking #{booking._id.slice(-8)}</small>
+                      </div>
+                      <span className={`status-pill ${booking.status.toLowerCase()}`}>
+                        {booking.status}
+                      </span>
+                    </div>
 
-                <div className="progress-label">
-                  <span>
-                    Network strength
-                  </span>
+                    <div className="coop-booking-details">
+                      <p><strong>Customer:</strong> {booking.customerId?.name || "Customer"} ({booking.customerId?.phone || "Phone hidden"})</p>
+                      <p><strong>Worker:</strong> {booking.workerId?.name || "Assigned Worker"}</p>
+                      <p><strong>Schedule:</strong> {booking.date} at {booking.time}</p>
+                      <p><strong>Address:</strong> {booking.address}</p>
+                      <p><strong>Amount:</strong> ₹{booking.amount} ({booking.paymentStatus === "Paid" ? "✓ Paid" : "Pending"})</p>
+                    </div>
 
-                  <strong>
-                    {Math.min(
-                      100,
-                      totalWorkers * 10
+                    {booking.status === "Pending" && (
+                      <div className="booking-control-actions">
+                        <button
+                          className="btn-accept"
+                          onClick={() => handleBookingAction(booking._id, "accept")}
+                        >
+                          <Check size={14} /> Accept Booking
+                        </button>
+                        <button
+                          className="btn-reject"
+                          onClick={() => handleBookingAction(booking._id, "reject")}
+                        >
+                          Reject
+                        </button>
+                      </div>
                     )}
-                    %
-                  </strong>
-                </div>
-
-                <div className="progress-track">
-
-                  <div
-                    className="progress-fill"
-                    style={{
-                      width: `${Math.min(
-                        100,
-                        totalWorkers * 10
-                      )}%`,
-                    }}
-                  ></div>
-
-                </div>
-
+                  </div>
+                ))}
               </div>
+            )}
+          </section>
+        )}
 
+        {/* SECTION 4: WORKFORCE MAP VIEW */}
+        {activeSection === "map" && (
+          <section className="coop-map-section">
+            <div className="section-header-row">
+              <div>
+                <h2>Workforce Location Overview</h2>
+                <p>Interactive geographic distribution of your registered cooperative members.</p>
+              </div>
             </div>
 
+            <ServiceMap
+              title="Workforce Location Overview"
+              subtitle={`Showing live deployment locations of cooperative specialists.`}
+              workers={workers}
+              userLocation={society?.district || "Satna, MP"}
+              height="500px"
+            />
+          </section>
+        )}
 
-            <div className="network-overview-card">
+        {/* SECTION 5: AI FORECAST & WORKFORCE ALLOCATION */}
+        {activeSection === "ai-forecast" && (
+          <section className="coop-ai-section">
+            <div className="section-header-row">
+              <div>
+                <div className="ai-badge-pill">
+                  <Sparkles size={16} />
+                  <span>Gemini Demand & Workforce Intelligence</span>
+                </div>
+                <h2>AI Demand Forecasting & Optimal Allocation</h2>
+                <p>Data-driven insights to help cooperative societies optimize workforce dispatch and maximize member income.</p>
+              </div>
+            </div>
 
-              <div className="network-card-heading">
-
-                <div className="network-card-icon">
-                  <Wrench size={20} />
+            {aiLoading ? (
+              <div className="empty-state-box">
+                <span className="spinner"></span>
+                <p>Generating AI demand models from historical service trends...</p>
+              </div>
+            ) : (
+              <>
+                {/* FORECAST CARDS */}
+                <div className="forecast-cards-grid">
+                  {forecast?.forecasts?.map((item, idx) => (
+                    <div className="forecast-card-detailed" key={idx}>
+                      <div className="forecast-card-top">
+                        <span className="category-tag">{item.category}</span>
+                        <span className="trend-badge">{item.trend}</span>
+                      </div>
+                      <h4>Market Demand Analysis</h4>
+                      <p className="reason-text">{item.reason}</p>
+                      <div className="allocation-recommendation">
+                        <strong>AI Recommendation:</strong>
+                        <p>{item.recommendedAllocation}</p>
+                      </div>
+                    </div>
+                  ))}
                 </div>
 
-                <span>
-                  Skill Diversity
-                </span>
+                {/* WORKFORCE ALLOCATION SUGGESTIONS */}
+                <div className="workforce-allocation-card">
+                  <div className="allocation-header">
+                    <Bot size={22} />
+                    <div>
+                      <h3>AI-Assisted Dispatch & Allocation Suggestions</h3>
+                      <p>{allocations?.summary || "Worker queue optimized by Fair Opportunity Score & Skill Rating."}</p>
+                    </div>
+                  </div>
 
-              </div>
-
-              <div className="network-number">
-                {totalServices}
-                <small>
-                  services
-                </small>
-              </div>
-
-              <p>
-                Different skill categories
-                customers can discover.
-              </p>
-
-              <div className="network-location">
-
-                <MapPin
-                  size={17}
-                  className="location-icon"
-                />
-
-                <span>
-                  {societyLocation}
-                </span>
-
-              </div>
-
-            </div>
-
-
-            <div className="network-overview-card">
-
-              <div className="network-card-heading">
-
-                <div className="network-card-icon">
-                  <TrendingUp size={20} />
+                  <div className="allocation-table-wrapper">
+                    <table className="allocation-table">
+                      <thead>
+                        <tr>
+                          <th>Worker</th>
+                          <th>Skill Focus</th>
+                          <th>Rating</th>
+                          <th>Suggested Role / Dispatch Priority</th>
+                          <th>Priority Score</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {allocations?.allocations?.map((item, idx) => (
+                          <tr key={idx}>
+                            <td><strong>{item.workerName}</strong></td>
+                            <td>{item.skills}</td>
+                            <td>⭐ {item.rating || 4.8}</td>
+                            <td>
+                              <span className="role-tag">{item.recommendedRole}</span>
+                            </td>
+                            <td>
+                              <strong style={{ color: "#0f6b5b" }}>{item.priorityScore}%</strong>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
-
-                <span>
-                  Opportunity Score
-                </span>
-
-              </div>
-
-              <div className="network-number">
-                {opportunityScore}
-                <small>
-                  /100
-                </small>
-              </div>
-
-              <p>
-                Demo indicator based on your
-                cooperative's current network.
-              </p>
-
-              <div className="impact-items">
-
-                <span>
-                  <CheckCircle2 size={14} />
-                  Worker visibility
-                </span>
-
-                <span>
-                  <CheckCircle2 size={14} />
-                  Service diversity
-                </span>
-
-              </div>
-
-            </div>
-
-          </div>
-
-        </section>
-
-
-        {/* =====================================
-            BOTTOM CTA
-        ===================================== */}
-
-        <section className="dashboard-bottom-banner">
-
-          <div className="bottom-banner-content">
-
-            <div className="bottom-banner-badge">
-              <Leaf size={16} />
-              Built for local communities
-            </div>
-
-            <h2>
-              Every skill deserves
-              <br />
-              an opportunity.
-            </h2>
-
-            <p>
-              Connect your cooperative workforce
-              with customers who need trusted
-              local services.
-            </p>
-
-          </div>
-
-
-          <div className="bottom-banner-actions">
-
-            <button
-              className="primary-dashboard-btn"
-              onClick={handleAddWorker}
-            >
-              <Plus size={17} />
-              Add Worker
-            </button>
-
-            <button
-              className="secondary-dashboard-btn"
-              onClick={handleWorkerManagement}
-            >
-              View Workforce
-              <ArrowRight size={17} />
-            </button>
-
-          </div>
-
-        </section>
-
+              </>
+            )}
+          </section>
+        )}
       </main>
-
-
-      {/* =====================================
-          FOOTER
-      ===================================== */}
-
-      <footer className="dashboard-footer">
-
-        <div className="footer-brand">
-
-          <div className="brand-logo">
-            S
-          </div>
-
-          <div>
-
-            <strong>
-              SkillNest
-            </strong>
-
-            <span>
-              Cooperative Gig Services
-              Platform
-            </span>
-
-          </div>
-
-        </div>
-
-
-        <div className="footer-center">
-          Empowering local skills through
-          technology.
-        </div>
-
-
-        <div className="footer-right">
-
-          <span>Secure</span>
-          <span>Trusted</span>
-          <span>Community First</span>
-
-        </div>
-
-      </footer>
-
     </div>
   );
 }

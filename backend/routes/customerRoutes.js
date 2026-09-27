@@ -1,17 +1,16 @@
 const express = require("express");
 
 const Customer = require("../models/Customer");
+const User = require("../models/User");
 
 const protect = require("../middleware/authMiddleware");
 const allowRoles = require("../middleware/roleMiddleware");
 
 const router = express.Router();
 
-
 // ===============================
-// ADD CUSTOMER
+// ADD / UPDATE CUSTOMER PROFILE
 // ===============================
-
 router.post(
     "/",
     protect,
@@ -22,23 +21,27 @@ router.post(
 
             if (!name || !phone || !location) {
                 return res.status(400).json({
-                    message:
-                        "Name, phone and location are required"
+                    message: "Name, phone, and location are required"
                 });
             }
 
-            const existingCustomer = await Customer.findOne({
+            let customer = await Customer.findOne({
                 userId: req.user.id
             });
 
-            if (existingCustomer) {
-                return res.status(400).json({
-                    message:
-                        "Customer profile already exists"
+            if (customer) {
+                customer.name = name;
+                customer.phone = phone;
+                customer.location = location;
+                await customer.save();
+
+                return res.status(200).json({
+                    message: "Customer profile updated successfully",
+                    customer
                 });
             }
 
-            const customer = await Customer.create({
+            customer = await Customer.create({
                 userId: req.user.id,
                 name,
                 phone,
@@ -46,27 +49,21 @@ router.post(
             });
 
             res.status(201).json({
-                message:
-                    "Customer added successfully",
+                message: "Customer added successfully",
                 customer
             });
-
         } catch (error) {
             res.status(500).json({
-                message:
-                    "Error adding customer",
+                message: "Error saving customer profile",
                 error: error.message
             });
         }
     }
 );
 
-
 // ===============================
-// GET ALL CUSTOMERS
-// ADMIN ONLY
+// GET ALL CUSTOMERS (ADMIN ONLY)
 // ===============================
-
 router.get(
     "/",
     protect,
@@ -74,176 +71,138 @@ router.get(
     async (req, res) => {
         try {
             const customers = await Customer.find();
-
             res.status(200).json(customers);
-
         } catch (error) {
             res.status(500).json({
-                message:
-                    "Error fetching customers",
+                message: "Error fetching customers",
                 error: error.message
             });
         }
     }
 );
 
-
 // ===============================
 // GET MY PROFILE
 // ===============================
-
 router.get(
     "/profile/me",
     protect,
     allowRoles("Customer"),
     async (req, res) => {
         try {
-            const customer = await Customer.findOne({
+            let customer = await Customer.findOne({
                 userId: req.user.id
             });
 
+            // Auto-heal if profile not created yet
             if (!customer) {
-                return res.status(404).json({
-                    message:
-                        "Customer profile not found"
-                });
+                const user = await User.findById(req.user.id);
+                if (user) {
+                    customer = await Customer.create({
+                        userId: user._id,
+                        name: user.name,
+                        phone: user.phone,
+                        location: "Local Community"
+                    });
+                } else {
+                    return res.status(404).json({
+                        message: "Customer profile not found"
+                    });
+                }
             }
 
             res.status(200).json(customer);
-
         } catch (error) {
             res.status(500).json({
-                message:
-                    "Error fetching customer profile",
+                message: "Error fetching customer profile",
                 error: error.message
             });
         }
     }
 );
 
-
 // ===============================
 // GET CUSTOMER BY ID
 // ===============================
-
 router.get(
     "/:id",
     protect,
     async (req, res) => {
         try {
-            const customer = await Customer.findById(
-                req.params.id
-            );
+            const customer = await Customer.findById(req.params.id);
 
             if (!customer) {
                 return res.status(404).json({
-                    message:
-                        "Customer not found"
+                    message: "Customer not found"
                 });
             }
-
-            // Customer can only view
-            // their own profile
 
             if (
                 req.user.role === "Customer" &&
                 customer.userId &&
-                customer.userId.toString() !==
-                    req.user.id.toString()
+                customer.userId.toString() !== req.user.id.toString()
             ) {
                 return res.status(403).json({
-                    message:
-                        "You can only view your own profile"
+                    message: "You can only view your own profile"
                 });
             }
 
             res.status(200).json(customer);
-
         } catch (error) {
             res.status(500).json({
-                message:
-                    "Error fetching customer",
+                message: "Error fetching customer",
                 error: error.message
             });
         }
     }
 );
 
-
 // ===============================
 // UPDATE CUSTOMER
 // ===============================
-
 router.patch(
     "/:id",
     protect,
     async (req, res) => {
         try {
-            const customer = await Customer.findById(
-                req.params.id
-            );
+            const customer = await Customer.findById(req.params.id);
 
             if (!customer) {
                 return res.status(404).json({
-                    message:
-                        "Customer not found"
+                    message: "Customer not found"
                 });
             }
-
-            // Customer can update
-            // only their own profile
 
             if (
                 req.user.role === "Customer" &&
                 customer.userId &&
-                customer.userId.toString() !==
-                    req.user.id.toString()
+                customer.userId.toString() !== req.user.id.toString()
             ) {
                 return res.status(403).json({
-                    message:
-                        "You can only update your own profile"
+                    message: "You can only update your own profile"
                 });
             }
 
-            // Only Customer or Admin
-            // can update customer profile
-
-            if (
-                req.user.role !== "Customer" &&
-                req.user.role !== "CooperativeAdmin"
-            ) {
-                return res.status(403).json({
-                    message:
-                        "Access denied"
-                });
-            }
-
-            const updatedCustomer =
-                await Customer.findByIdAndUpdate(
-                    req.params.id,
-                    req.body,
-                    {
-                        new: true,
-                        runValidators: true
-                    }
-                );
+            const updatedCustomer = await Customer.findByIdAndUpdate(
+                req.params.id,
+                req.body,
+                {
+                    new: true,
+                    runValidators: true
+                }
+            );
 
             res.status(200).json({
-                message:
-                    "Customer updated successfully",
-                customer:
-                    updatedCustomer
+                message: "Customer updated successfully",
+                customer: updatedCustomer
             });
-
         } catch (error) {
             res.status(500).json({
-                message:
-                    "Error updating customer",
+                message: "Error updating customer",
                 error: error.message
             });
         }
     }
 );
-
 
 module.exports = router;

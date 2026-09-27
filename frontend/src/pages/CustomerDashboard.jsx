@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import {
     Search,
     MapPin,
@@ -14,2061 +15,1634 @@ import {
     Users,
     Building2,
     CheckCircle2,
-    CircleDollarSign,
     UserRound,
-    ChevronRight,
     BadgeCheck,
-    Bot
+    Bot,
+    Bell,
+    Globe,
+    LogOut,
+    AlertCircle,
+    Calendar,
+    Phone,
+    X,
+    CreditCard,
+    Check,
+    Flame,
+    Navigation,
+    Award,
+    Info,
+    Camera,
+    RefreshCw,
+    SlidersHorizontal,
+    Briefcase,
+    TrendingUp,
+    HeartHandshake
 } from "lucide-react";
 
+import logo from "../assets/Skill D Nest.jpeg";
 import api from "../services/api";
+import { translations } from "../utils/translations";
+import ServiceMap from "../components/ServiceMap";
 import "./CustomerDashboard.css";
 
-
-const normalizeArray = (value) => {
-    if (Array.isArray(value)) return value.filter(Boolean);
-    if (value === undefined || value === null || value === "") return [];
-    return [value];
-};
-
-
-const getWorkerSkills = (worker = {}) => {
-    return [
-        ...normalizeArray(worker.skills),
-        ...normalizeArray(worker.skill),
-        ...normalizeArray(worker.service),
-        ...normalizeArray(worker.category),
-        ...normalizeArray(worker.subServices)
-    ]
-        .map((item) => String(item).trim())
-        .filter(Boolean);
-};
-
-
-const normalizeStatus = (status) => {
-    if (!status) return "Pending";
-
-    const value = String(status).toLowerCase();
-
-    if (
-        value.includes("verif") ||
-        value.includes("approv") ||
-        value === "approved"
-    ) {
-        return "Verified";
-    }
-
-    if (value.includes("reject")) {
-        return "Rejected";
-    }
-
-    return "Pending";
-};
-
-
-const isAvailable = (worker = {}) => {
-    if (typeof worker.availability === "boolean") {
-        return worker.availability;
-    }
-
-    if (typeof worker.available === "boolean") {
-        return worker.available;
-    }
-
-    const status = String(
-        worker.availability || worker.status || ""
-    ).toLowerCase();
-
-    if (
-        status.includes("available") ||
-        status.includes("online") ||
-        status === "active"
-    ) {
-        return true;
-    }
-
-    return false;
-};
-
-
-const getSocietyName = (society = {}) => {
-    return (
-        society.name ||
-        society.societyName ||
-        society.cooperativeName ||
-        society.title ||
-        "Cooperative Society"
-    );
-};
-
-
-const getSocietyLocation = (society = {}) => {
-    return (
-        society.location ||
-        society.address ||
-        society.city ||
-        "Local community"
-    );
-};
-
-
-const getPriceInfo = (worker = {}, aiResult = null) => {
-    const fairPrice = worker.fairPrice || worker.fair_price;
-
-    const min =
-        fairPrice?.min ??
-        fairPrice?.minimum ??
-        worker.minPrice ??
-        worker.minimumPrice ??
-        worker.priceMin ??
-        worker.min_price;
-
-    const max =
-        fairPrice?.max ??
-        fairPrice?.maximum ??
-        worker.maxPrice ??
-        worker.maximumPrice ??
-        worker.priceMax ??
-        worker.max_price;
-
-    if (min !== undefined && max !== undefined) {
-        return {
-            text: `₹${min} – ₹${max}`,
-            source: "Cooperative price"
-        };
-    }
-
-    if (worker.priceRange) {
-        return {
-            text: String(worker.priceRange),
-            source: "Cooperative price"
-        };
-    }
-
-    if (worker.price !== undefined && worker.price !== null) {
-        return {
-            text: `₹${worker.price}`,
-            source: "Cooperative price"
-        };
-    }
-
-    if (worker.hourlyRate !== undefined && worker.hourlyRate !== null) {
-        return {
-            text: `₹${worker.hourlyRate}/hr`,
-            source: "Cooperative rate"
-        };
-    }
-
-    const aiFairPrice =
-        aiResult?.fairPrice ||
-        aiResult?.estimatedPrice ||
-        aiResult?.priceRange ||
-        aiResult?.estimated_price;
-
-    if (aiFairPrice) {
-        return {
-            text: String(aiFairPrice),
-            source: "AI indicative estimate"
-        };
-    }
-
-    return {
-        text: "Not configured",
-        source: "Cooperative price not provided"
-    };
-};
-
-
-const getServiceAliases = (text = "") => {
-    const value = String(text).toLowerCase();
-
-    if (
-        value.includes("plumb") ||
-        value.includes("pipe") ||
-        value.includes("leak") ||
-        value.includes("tap") ||
-        value.includes("fitting")
-    ) {
-        return [
-            "plumb",
-            "pipe",
-            "leak",
-            "tap",
-            "fitting",
-            "bathroom"
-        ];
-    }
-
-    if (
-        value.includes("electric") ||
-        value.includes("wiring") ||
-        value.includes("switch") ||
-        value.includes("light")
-    ) {
-        return [
-            "electric",
-            "wire",
-            "wiring",
-            "switch",
-            "light",
-            "fan",
-            "repair"
-        ];
-    }
-
-    if (
-        value.includes("clean") ||
-        value.includes("housekeeping") ||
-        value.includes("sanit")
-    ) {
-        return [
-            "clean",
-            "housekeeping",
-            "sanit",
-            "home"
-        ];
-    }
-
-    if (
-        value.includes("agri") ||
-        value.includes("farm") ||
-        value.includes("field") ||
-        value.includes("labour") ||
-        value.includes("labor")
-    ) {
-        return [
-            "agri",
-            "farm",
-            "field",
-            "labour",
-            "labor",
-            "harvest",
-            "crop"
-        ];
-    }
-
-    const words = value
-        .split(/\s+/)
-        .map((word) => word.replace(/[^a-z0-9]/g, ""))
-        .filter((word) => word.length >= 4);
-
-    return words;
-};
-
-
-const calculateMatchScore = (
-    worker,
-    aiResult,
-    request
-) => {
-    const serviceText = [
-        aiResult?.service,
-        aiResult?.category,
-        request
-    ]
-        .filter(Boolean)
-        .join(" ");
-
-    const aliases = getServiceAliases(serviceText);
-    const skillsText = getWorkerSkills(worker)
-        .join(" ")
-        .toLowerCase();
-
-    const workerLocation = String(
-        worker.location || ""
-    ).toLowerCase();
-
-    const requestLocation = String(
-        aiResult?.location || ""
-    ).toLowerCase();
-
-    const skillMatch = aliases.some((alias) =>
-        skillsText.includes(alias)
-    );
-
-    const locationMatch =
-        requestLocation &&
-        workerLocation &&
-        (
-            workerLocation.includes(requestLocation) ||
-            requestLocation.includes(workerLocation)
-        );
-
-    const available = isAvailable(worker);
-
-    const rating = Number(
-        worker.rating || worker.averageRating || 0
-    );
-
-    let score = 0;
-
-    if (skillMatch) score += 55;
-    if (available) score += 20;
-    if (locationMatch) score += 15;
-    score += Math.min(10, Math.max(0, rating * 2));
-
-    return {
-        score: Math.min(100, Math.round(score)),
-        skillMatch,
-        locationMatch: Boolean(locationMatch),
-        available
-    };
-};
-
-
-const getSocietyWorkers = (society) => {
-    return Array.isArray(society?.workers)
-        ? society.workers
-        : [];
-};
-
+// 12 Standard Reusable Categories
+const ALL_CATEGORIES = [
+    { id: "all", name: "All Categories", icon: Sparkles },
+    { id: "Plumbing", name: "Plumber", icon: Wrench },
+    { id: "Electrical", name: "Electrician", icon: Zap },
+    { id: "Carpenter", name: "Carpenter", icon: Wrench },
+    { id: "Painter", name: "Painter", icon: Droplets },
+    { id: "Cleaner", name: "Cleaner", icon: Sparkles },
+    { id: "Mechanic", name: "Mechanic", icon: Wrench },
+    { id: "Driver", name: "Driver", icon: Navigation },
+    { id: "Tutor", name: "Tutor", icon: UserRound },
+    { id: "Caregiver", name: "Caregiver", icon: Users },
+    { id: "Gardener", name: "Gardener", icon: Droplets },
+    { id: "Domestic Worker", name: "Domestic Worker", icon: UserRound },
+    { id: "Agriculture Labour", name: "Agriculture Labour", icon: Tractor }
+];
 
 function CustomerDashboard() {
+    const navigate = useNavigate();
 
+    // Multilingual & User State
+    const [lang, setLang] = useState(localStorage.getItem("lang") || "en");
+    const t = translations[lang] || translations.en;
+
+    const [user, setUser] = useState(() => {
+        try {
+            return JSON.parse(localStorage.getItem("user") || "{}");
+        } catch {
+            return {};
+        }
+    });
+
+    // Navigation Tab: "explore" or "bookings"
+    const [activeTab, setActiveTab] = useState("explore");
+
+    // Search & Filter States
     const [request, setRequest] = useState("");
-    const [loading, setLoading] = useState(false);
-    const [result, setResult] = useState(null);
-    const [error, setError] = useState("");
+    const [selectedCategory, setSelectedCategory] = useState("all");
+    const [isEmergency, setIsEmergency] = useState(false);
+    const [userLocation, setUserLocation] = useState("Satna, MP");
+    const [geoLoading, setGeoLoading] = useState(false);
 
-    const [cooperatives, setCooperatives] = useState([]);
+    // AI Smart Match States
+    const [aiLoading, setAiLoading] = useState(false);
+    const [aiResult, setAiResult] = useState(null);
+    const [aiMatchedWorkers, setAiMatchedWorkers] = useState([]);
+    const [aiError, setAiError] = useState("");
+    const [aiConfidence, setAiConfidence] = useState(0);
+
+    // Data Lists
     const [workers, setWorkers] = useState([]);
-    const [networkLoading, setNetworkLoading] = useState(true);
-    const [networkError, setNetworkError] = useState("");
-    const [selectedWorker, setSelectedWorker] = useState(null);
+    const [bookings, setBookings] = useState([]);
+    const [notifications, setNotifications] = useState([]);
+    const [showNotifications, setShowNotifications] = useState(false);
+    const [loadingNetwork, setLoadingNetwork] = useState(true);
 
+    // Modals
+    const [bookingWorker, setBookingWorker] = useState(null);
+    const [scoreInfoWorker, setScoreInfoWorker] = useState(null);
+    const [reviewBooking, setReviewBooking] = useState(null);
+    const [paymentBooking, setPaymentBooking] = useState(null);
 
-    useEffect(() => {
-        let mounted = true;
+    // Booking Form State
+    const [bookingForm, setBookingForm] = useState({
+        service: "General Service",
+        date: new Date().toISOString().split("T")[0],
+        time: "10:00 AM",
+        address: userLocation,
+        amount: 350,
+        notes: "",
+        isEmergency: false
+    });
+    const [bookingSubmitting, setBookingSubmitting] = useState(false);
+    const [bookingSuccess, setBookingSuccess] = useState("");
+    const [bookingError, setBookingError] = useState("");
 
-        const loadCooperativeNetwork = async () => {
-            try {
-                setNetworkLoading(true);
-                setNetworkError("");
+    // Review Form State
+    const [reviewForm, setReviewForm] = useState({
+        rating: 5,
+        comment: "",
+        workPhoto: ""
+    });
+    const [reviewSubmitting, setReviewSubmitting] = useState(false);
+    const [reviewSuccess, setReviewSuccess] = useState("");
 
-                const token = localStorage.getItem("token");
+    // Payment Form State
+    const [paymentMethod, setPaymentMethod] = useState("UPI");
+    const [paymentSubmitting, setPaymentSubmitting] = useState(false);
+    const [paymentSuccess, setPaymentSuccess] = useState("");
 
-                const response = await fetch(
-                    "http://127.0.0.1:5000/api/cooperatives",
-                    {
-                        method: "GET",
-                        headers: {
-                            "Content-Type": "application/json",
-                            ...(token
-                                ? {
-                                      Authorization: `Bearer ${token}`
-                                  }
-                                : {})
-                        }
-                    }
-                );
+    // Toggle Language
+    const toggleLanguage = () => {
+        const next = lang === "en" ? "hi" : "en";
+        setLang(next);
+        localStorage.setItem("lang", next);
+    };
 
-                const responseText = await response.text();
-                let data = {};
+    // Logout
+    const handleLogout = () => {
+        localStorage.removeItem("token");
+        localStorage.removeItem("user");
+        navigate("/customer-login");
+    };
 
-                try {
-                    data = responseText
-                        ? JSON.parse(responseText)
-                        : {};
-                } catch {
-                    data = {};
-                }
-
-                if (!response.ok) {
-                    throw new Error(
-                        data.message ||
-                        `Cooperative API failed (${response.status})`
-                    );
-                }
-
-                const societies =
-                    data?.cooperatives ||
-                    data?.data ||
-                    data ||
-                    [];
-
-                if (!Array.isArray(societies)) {
-                    throw new Error(
-                        "Cooperative API returned an invalid data format."
-                    );
-                }
-
-                const results = await Promise.all(
-                    societies
-                        .filter((society) => society?._id)
-                        .map(async (society) => {
-                            try {
-                                const workerResponse = await fetch(
-                                    `http://127.0.0.1:5000/api/cooperatives/${society._id}/workers`,
-                                    {
-                                        method: "GET",
-                                        headers: {
-                                            "Content-Type":
-                                                "application/json",
-                                            ...(token
-                                                ? {
-                                                      Authorization: `Bearer ${token}`
-                                                  }
-                                                : {})
-                                        }
-                                    }
-                                );
-
-                                const workerText =
-                                    await workerResponse.text();
-
-                                let workerPayload = {};
-
-                                try {
-                                    workerPayload = workerText
-                                        ? JSON.parse(workerText)
-                                        : {};
-                                } catch {
-                                    workerPayload = {};
-                                }
-
-                                if (!workerResponse.ok) {
-                                    throw new Error(
-                                        workerPayload.message ||
-                                        `Worker API failed (${workerResponse.status})`
-                                    );
-                                }
-
-                                const workerData =
-                                    workerPayload?.workers ||
-                                    workerPayload?.data ||
-                                    workerPayload ||
-                                    [];
-
-                                const societyWorkers =
-                                    Array.isArray(workerData)
-                                        ? workerData
-                                        : [];
-
-                                return {
-                                    ...society,
-                                    workers: societyWorkers.map(
-                                        (worker) => ({
-                                            ...worker,
-                                            __cooperativeId:
-                                                society._id,
-                                            __cooperativeName:
-                                                getSocietyName(society),
-                                            __cooperativeVerified:
-                                                normalizeStatus(
-                                                    society.status ||
-                                                    society.verificationStatus ||
-                                                    society.verifiedStatus
-                                                ) === "Verified"
-                                        })
-                                    )
-                                };
-
-                            } catch (workerError) {
-
-                                console.error(
-                                    `Worker loading error for ${society._id}:`,
-                                    workerError
-                                );
-
-                                return {
-                                    ...society,
-                                    workers: []
-                                };
-                            }
-                        })
-                );
-
-                if (!mounted) return;
-
-                setCooperatives(results);
-
-                setWorkers(
-                    results.flatMap((society) =>
-                        getSocietyWorkers(society)
-                    )
-                );
-
-            } catch (err) {
-
-                console.error(
-                    "Cooperative network loading error:",
-                    err
-                );
-
-                if (mounted) {
-                    setNetworkError(
-                        err.message ||
-                        "Unable to connect to the cooperative API."
-                    );
-                }
-
-            } finally {
-
-                if (mounted) {
-                    setNetworkLoading(false);
-                }
-            }
-        };
-
-        loadCooperativeNetwork();
-
-        return () => {
-            mounted = false;
-        };
-
-    }, []);
-
-
-    const analyzeRequest = async () => {
-
-        if (!request.trim()) {
-            setError("Please describe the service you need.");
+    // Geolocation detection
+    const handleDetectLocation = () => {
+        if (!navigator.geolocation) {
+            alert("Geolocation is not supported by your browser.");
             return;
         }
 
-        setLoading(true);
-        setError("");
-        setResult(null);
+        setGeoLoading(true);
+        navigator.geolocation.getCurrentPosition(
+            (pos) => {
+                const lat = pos.coords.latitude.toFixed(3);
+                const lng = pos.coords.longitude.toFixed(3);
+                const locStr = `Near Coordinates (${lat}, ${lng})`;
+                setUserLocation(locStr);
+                setGeoLoading(false);
+            },
+            (err) => {
+                console.warn("Location error:", err.message);
+                setUserLocation("Satna, MP");
+                setGeoLoading(false);
+            },
+            { timeout: 8000 }
+        );
+    };
 
+    // Fetch All Dynamic Dashboard Data
+    const fetchAllData = async () => {
         try {
+            setLoadingNetwork(true);
 
-            const token = localStorage.getItem("token");
+            // 1. Fetch Workers
+            const workersRes = await api.get("/workers").catch(() => ({ data: [] }));
+            const workerList = Array.isArray(workersRes.data)
+                ? workersRes.data
+                : (workersRes.data?.workers || []);
+            setWorkers(workerList);
 
-            const response = await api.post(
-                "/ai/analyze",
-                {
-                    message: request
-                },
-                {
-                    headers: {
-                        Authorization: `Bearer ${token}`
-                    }
-                }
-            );
+            // 2. Fetch Customer Bookings
+            const bookingsRes = await api.get("/bookings/my-bookings").catch(() => ({ data: [] }));
+            const bookingList = Array.isArray(bookingsRes.data)
+                ? bookingsRes.data
+                : (bookingsRes.data?.bookings || []);
+            setBookings(bookingList);
 
-            const aiResult = response.data?.result;
-
-            if (!aiResult) {
-                throw new Error(
-                    response.data?.message ||
-                    "AI returned an empty result."
-                );
-            }
-
-            setResult(aiResult);
+            // 3. Fetch Notifications
+            const notifRes = await api.get("/notifications/my-notifications").catch(() => ({ data: [] }));
+            const notifList = Array.isArray(notifRes.data)
+                ? notifRes.data
+                : (notifRes.data?.notifications || []);
+            setNotifications(Array.isArray(notifList) ? notifList : []);
 
         } catch (err) {
-
-            console.error(err);
-
-            setError(
-                err.message ||
-                "Unable to connect with AI service."
-            );
-
+            console.error("Dashboard data fetch error:", err);
         } finally {
-            setLoading(false);
+            setLoadingNetwork(false);
         }
     };
 
+    useEffect(() => {
+        fetchAllData();
+    }, []);
 
-    const matchedWorkers = useMemo(() => {
+    // Perform Local NLP / Heuristic Match
+    const performLocalMatch = (text, availableWorkerList) => {
+        const lower = text.toLowerCase();
+        let detectedService = "General Service";
+        let priority = isEmergency || lower.includes("urg") || lower.includes("emerg") || lower.includes("leak") || lower.includes("burst") || lower.includes("short circuit") ? "Emergency" : "Normal";
+        let category = "Household";
 
-        if (!result || workers.length === 0) {
-            return [];
+        if (lower.includes("plumb") || lower.includes("pipe") || lower.includes("leak") || lower.includes("tap") || lower.includes("drain")) {
+            detectedService = "Plumbing";
+        } else if (lower.includes("electr") || lower.includes("wir") || lower.includes("switch") || lower.includes("fan") || lower.includes("current") || lower.includes("light")) {
+            detectedService = "Electrical";
+        } else if (lower.includes("carpenter") || lower.includes("wood") || lower.includes("door") || lower.includes("furniture") || lower.includes("table")) {
+            detectedService = "Carpenter";
+        } else if (lower.includes("paint") || lower.includes("color") || lower.includes("wall")) {
+            detectedService = "Painter";
+        } else if (lower.includes("clean") || lower.includes("wash") || lower.includes("sweep") || lower.includes("dust")) {
+            detectedService = "Cleaner";
+        } else if (lower.includes("mechanic") || lower.includes("car") || lower.includes("bike") || lower.includes("motor") || lower.includes("scooter")) {
+            detectedService = "Mechanic";
+        } else if (lower.includes("driver") || lower.includes("drive") || lower.includes("ride") || lower.includes("trip")) {
+            detectedService = "Driver";
+        } else if (lower.includes("tutor") || lower.includes("teach") || lower.includes("study") || lower.includes("math") || lower.includes("class")) {
+            detectedService = "Tutor";
+        } else if (lower.includes("care") || lower.includes("elder") || lower.includes("patient") || lower.includes("baby")) {
+            detectedService = "Caregiver";
+        } else if (lower.includes("garden") || lower.includes("plant") || lower.includes("tree") || lower.includes("grass")) {
+            detectedService = "Gardener";
+        } else if (lower.includes("domestic") || lower.includes("maid") || lower.includes("cook") || lower.includes("helper")) {
+            detectedService = "Domestic Worker";
+        } else if (lower.includes("farm") || lower.includes("crop") || lower.includes("harvest") || lower.includes("agriculture")) {
+            detectedService = "Agriculture Labour";
         }
 
-        return workers
-            .map((worker) => ({
-                ...worker,
-                __match: calculateMatchScore(
-                    worker,
-                    result,
-                    request
-                )
-            }))
-            .filter(
-                (worker) =>
-                    worker.__match.skillMatch
-            )
-            .sort(
-                (a, b) =>
-                    b.__match.score -
-                    a.__match.score
-            )
-            .slice(0, 6);
+        // Filter and Rank Workers
+        const matched = (availableWorkerList || workers).filter(w => {
+            const skillsStr = (Array.isArray(w.skills) ? w.skills.join(" ") : String(w.skills || "")).toLowerCase();
+            return skillsStr.includes(detectedService.toLowerCase()) || detectedService === "General Service";
+        }).sort((a, b) => {
+            // Sort by availability, then opportunity score, then rating
+            if (a.availability !== b.availability) return a.availability ? -1 : 1;
+            const oppA = a.opportunityScore || 75;
+            const oppB = b.opportunityScore || 75;
+            if (oppB !== oppA) return oppB - oppA;
+            return (b.rating || 4) - (a.rating || 4);
+        });
 
-    }, [result, workers, request]);
+        return {
+            analysis: {
+                service: detectedService,
+                category,
+                priority,
+                location: userLocation,
+                duration: priority === "Emergency" ? "Immediate Dispatch (30 mins)" : "1-2 hours",
+                reasoning: `Identified demand for ${detectedService} service with ${priority} priority. Ranked cooperative specialists prioritizing active availability and highest Fair Opportunity Scores.`
+            },
+            matchedWorkers: matched.slice(0, 4),
+            confidence: detectedService === "General Service" ? 82 : 96
+        };
+    };
 
+    // AI Smart Matching Trigger
+    const handleSmartMatch = async (customPrompt) => {
+        const queryText = (customPrompt || request).trim();
 
-    const matchedSocieties = useMemo(() => {
-
-        if (!result || cooperatives.length === 0) {
-            return [];
+        if (!queryText) {
+            setAiError("Please describe what service or help you need.");
+            return;
         }
 
-        const matchedIds = new Set(
-            matchedWorkers
-                .map(
-                    (worker) =>
-                        worker.__cooperativeId
-                )
-                .filter(Boolean)
-        );
+        if (customPrompt) {
+            setRequest(customPrompt);
+        }
 
-        const societiesWithMatches =
-            cooperatives
-                .filter((society) =>
-                    matchedIds.has(society._id)
-                )
-                .map((society) => {
+        setAiLoading(true);
+        setAiError("");
+        setAiResult(null);
+        setAiMatchedWorkers([]);
 
-                    const societyWorkers =
-                        getSocietyWorkers(
-                            society
-                        ).filter((worker) =>
-                            matchedWorkers.some(
-                                (match) =>
-                                    match._id ===
-                                    worker._id
-                            )
-                        );
-
-                    return {
-                        ...society,
-                        matchedWorkerCount:
-                            societyWorkers.length
-                    };
-                })
-                .sort(
-                    (a, b) =>
-                        b.matchedWorkerCount -
-                        a.matchedWorkerCount
-                );
-
-        return societiesWithMatches;
-
-    }, [result, cooperatives, matchedWorkers]);
-
-
-    const scrollToSection = (id) => {
-        document
-            .getElementById(id)
-            ?.scrollIntoView({
-                behavior: "smooth",
-                block: "start"
+        try {
+            // Call Smart Match API (POST /api/smart-match)
+            const response = await api.post("/smart-match", {
+                requirement: queryText,
+                message: queryText,
+                location: userLocation
             });
+
+            const data = response.data;
+
+            if (data && (data.aiAnalysis || data.cooperatives || data.directWorkers)) {
+                const analysis = data.aiAnalysis || {};
+                const detectedService = analysis.service || "General Service";
+                const priority = analysis.priority || (isEmergency ? "Emergency" : "Normal");
+
+                setAiResult({
+                    service: detectedService,
+                    category: analysis.category || "Household",
+                    priority: priority,
+                    location: analysis.location || userLocation,
+                    duration: analysis.duration || (priority === "Emergency" || priority === "urgent" ? "Immediate (30m)" : "1-2 hours"),
+                    reasoning: data.message || `AI analyzed requirement and matched top certified cooperative specialists.`
+                });
+
+                if (priority === "Emergency" || priority === "urgent" || priority === "High") {
+                    setIsEmergency(true);
+                }
+
+                // Extract all workers from response
+                let matchedList = [];
+
+                if (Array.isArray(data.cooperatives) && data.cooperatives.length > 0) {
+                    data.cooperatives.forEach(c => {
+                        if (Array.isArray(c.workers)) {
+                            c.workers.forEach(w => {
+                                matchedList.push({
+                                    ...w,
+                                    _id: w.id || w._id,
+                                    cooperativeName: c.societyName
+                                });
+                            });
+                        }
+                    });
+                }
+
+                if (Array.isArray(data.directWorkers) && data.directWorkers.length > 0) {
+                    data.directWorkers.forEach(w => {
+                        if (!matchedList.some(m => m._id === w._id)) {
+                            matchedList.push(w);
+                        }
+                    });
+                }
+
+                // If backend returned no workers, run local match with platform workers
+                if (matchedList.length === 0) {
+                    const localResult = performLocalMatch(queryText, workers);
+                    matchedList = localResult.matchedWorkers;
+                }
+
+                setAiMatchedWorkers(matchedList.slice(0, 4));
+                setAiConfidence(95);
+
+                // Auto-select category
+                if (detectedService && detectedService !== "General Service") {
+                    setSelectedCategory(detectedService);
+                }
+            } else {
+                throw new Error("No structured analysis returned");
+            }
+        } catch (err) {
+            console.warn("AI Smart Match fallback:", err.message);
+
+            // Execute local AI heuristic fallback
+            const localResult = performLocalMatch(queryText, workers);
+            setAiResult(localResult.analysis);
+            setAiMatchedWorkers(localResult.matchedWorkers);
+            setAiConfidence(localResult.confidence);
+
+            if (localResult.analysis.service && localResult.analysis.service !== "General Service") {
+                setSelectedCategory(localResult.analysis.service);
+            }
+            if (localResult.analysis.priority === "Emergency") {
+                setIsEmergency(true);
+            }
+        } finally {
+            setAiLoading(false);
+        }
     };
 
+    // Filtered Workers Catalog
+    const displayedWorkers = useMemo(() => {
+        return workers.filter((worker) => {
+            const skills = Array.isArray(worker.skills)
+                ? worker.skills.join(" ").toLowerCase()
+                : String(worker.skills || "").toLowerCase();
 
-    const services = [
-        {
-            icon: <Wrench size={23} />,
-            title: "Plumbing",
-            text: "Pipe repair, leakage & fittings"
-        },
-        {
-            icon: <Zap size={23} />,
-            title: "Electrical",
-            text: "Wiring, switches & repairs"
-        },
-        {
-            icon: <Droplets size={23} />,
-            title: "Cleaning",
-            text: "Home & community cleaning"
-        },
-        {
-            icon: <Tractor size={23} />,
-            title: "Agriculture",
-            text: "Farm & field assistance"
+            // Category filter
+            if (selectedCategory !== "all") {
+                const target = selectedCategory.toLowerCase();
+                if (!skills.includes(target)) return false;
+            }
+
+            // Emergency filter
+            if (isEmergency && !worker.availability) {
+                return false;
+            }
+
+            return true;
+        }).sort((a, b) => {
+            if (a.availability !== b.availability) {
+                return a.availability ? -1 : 1;
+            }
+            const oppA = a.opportunityScore || 75;
+            const oppB = b.opportunityScore || 75;
+            if (oppB !== oppA) return oppB - oppA;
+            return (b.rating || 4) - (a.rating || 4);
+        });
+    }, [workers, selectedCategory, isEmergency]);
+
+    // Open Booking Modal
+    const openBookingModal = (worker) => {
+        const workerSkills = Array.isArray(worker.skills) ? worker.skills : [worker.skills];
+        const primaryService = selectedCategory !== "all" ? selectedCategory : (workerSkills[0] || "Household Service");
+
+        setBookingWorker(worker);
+        setBookingForm({
+            service: primaryService,
+            date: new Date().toISOString().split("T")[0],
+            time: "11:00 AM",
+            address: userLocation || "Local Community",
+            amount: 350 + (worker.experience || 0) * 20,
+            notes: isEmergency ? "🚨 URGENT EMERGENCY REQUEST" : "",
+            isEmergency: isEmergency
+        });
+        setBookingSuccess("");
+        setBookingError("");
+    };
+
+    // Submit Booking
+    const handleCreateBooking = async (e) => {
+        e.preventDefault();
+        setBookingSubmitting(true);
+        setBookingError("");
+        setBookingSuccess("");
+
+        try {
+            await api.post("/bookings", {
+                workerId: bookingWorker._id,
+                service: bookingForm.service,
+                date: bookingForm.date,
+                time: bookingForm.time,
+                address: bookingForm.address,
+                amount: bookingForm.amount,
+                isEmergency: bookingForm.isEmergency,
+                notes: bookingForm.notes
+            });
+
+            setBookingSuccess("Booking placed successfully! Worker & Cooperative notified.");
+            setTimeout(() => {
+                setBookingWorker(null);
+                setActiveTab("bookings");
+                fetchAllData();
+            }, 1200);
+        } catch (err) {
+            console.error("Booking error:", err);
+            setBookingError(
+                err.response?.data?.message || "Failed to create booking. Please check details."
+            );
+        } finally {
+            setBookingSubmitting(false);
         }
-    ];
+    };
 
+    // Cancel Booking
+    const handleCancelBooking = async (bookingId) => {
+        if (!window.confirm("Are you sure you want to cancel this booking?")) return;
+        try {
+            await api.patch(`/bookings/${bookingId}/cancel`);
+            fetchAllData();
+        } catch (err) {
+            alert(err.response?.data?.message || "Failed to cancel booking.");
+        }
+    };
+
+    // Submit Payment
+    const handleProcessPayment = async (e) => {
+        e.preventDefault();
+        setPaymentSubmitting(true);
+        setPaymentSuccess("");
+
+        try {
+            await api.post("/payments/process", {
+                bookingId: paymentBooking._id,
+                amount: paymentBooking.amount || 350,
+                paymentMethod
+            });
+
+            setPaymentSuccess("Payment simulated successfully! Receipt generated.");
+            setTimeout(() => {
+                setPaymentBooking(null);
+                fetchAllData();
+            }, 1200);
+        } catch (err) {
+            console.error("Payment error:", err);
+            alert(err.response?.data?.message || "Payment simulation failed.");
+        } finally {
+            setPaymentSubmitting(false);
+        }
+    };
+
+    // Submit Review
+    const handleSubmitReview = async (e) => {
+        e.preventDefault();
+        setReviewSubmitting(true);
+        setReviewSuccess("");
+
+        try {
+            await api.post("/reviews", {
+                bookingId: reviewBooking._id,
+                rating: Number(reviewForm.rating),
+                comment: reviewForm.comment,
+                workPhoto: reviewForm.workPhoto
+            });
+
+            setReviewSuccess("Thank you for your valuable feedback!");
+            setTimeout(() => {
+                setReviewBooking(null);
+                fetchAllData();
+            }, 1200);
+        } catch (err) {
+            console.error("Review error:", err);
+            alert(err.response?.data?.message || "Failed to submit review.");
+        } finally {
+            setReviewSubmitting(false);
+        }
+    };
+
+    // Mark all notifications read
+    const handleMarkAllRead = async () => {
+        try {
+            await api.patch("/notifications/read-all");
+            setNotifications(prev => prev.map(n => ({ ...n, isRead: true })));
+        } catch (err) {
+            console.warn("Mark read error:", err);
+        }
+    };
+
+    const unreadNotifCount = notifications.filter(n => !n.isRead).length;
 
     return (
         <div className="customer-dashboard">
 
-            {/* NAVBAR */}
-
-            <nav className="dashboard-navbar">
-
-                <div className="dashboard-brand">
-                    <div className="brand-mark">
-                        S
-                    </div>
-
-                    <div>
-                        <h2>SkillDnest</h2>
-                        <span>Local Skills, Trusted Services</span>
-                    </div>
-                </div>
-
-                <div className="dashboard-location">
-                    <MapPin size={18} />
-                    <span>Find services near you</span>
-                </div>
-
-                <div className="dashboard-profile">
-                    <div className="profile-circle">
-                        C
-                    </div>
-
-                    <div>
-                        <strong>Customer</strong>
-                        <span>Welcome back</span>
+            {/* TOP NAVIGATION BAR */}
+            <header className="dashboard-navbar">
+                <div className="dashboard-brand" onClick={() => setActiveTab("explore")}>
+                    <img
+                        src={logo}
+                        alt="SkillDnest Logo"
+                        className="brand-logo-img"
+                    />
+                    <div className="brand-text">
+                        <h2>{t.brandName || "SkillDnest"}</h2>
+                        <span>Cooperative Gig Services Platform</span>
                     </div>
                 </div>
 
-            </nav>
+                <div className="dashboard-nav-center">
+                    {/* Location Badge */}
+                    <button
+                        className="location-pill-btn"
+                        onClick={handleDetectLocation}
+                        title="Click to detect current location"
+                        type="button"
+                    >
+                        <MapPin size={15} className="location-pin-icon" />
+                        <span>{geoLoading ? "Detecting..." : userLocation}</span>
+                    </button>
 
-
-            {/* HERO */}
-
-            <section className="dashboard-hero">
-
-                <div className="hero-content">
-
-                    <div className="ai-badge">
-                        <span className="ai-robot-logo">
-                            <Bot size={18} />
-                        </span>
-                        <span>SkillNest AI Service Matching</span>
-                    </div>
-
-                    <h1>
-                        What service do you
-                        <br />
-                        <span>need today?</span>
-                    </h1>
-
-                    <p>
-                        Describe your problem naturally. Our AI will
-                        understand your requirement and help you find
-                        the right local service.
-                    </p>
-
-
-                    {/* AI SEARCH BOX */}
-
-                    <div className="ai-search-box">
-
-                        <div
-                            className="ai-robot-glow"
-                            aria-hidden="true"
-                        >
-                            <Bot size={20} />
-                        </div>
-
-                        <div className="search-icon">
-                            <Search size={23} />
-                        </div>
-
-                        <textarea
-                            value={request}
-                            onChange={(e) =>
-                                setRequest(e.target.value)
-                            }
-                            placeholder="Example: My kitchen pipe is leaking and needs urgent repair..."
-                        />
-
+                    {/* Navigation Tabs */}
+                    <div className="dashboard-tabs">
                         <button
-                            onClick={analyzeRequest}
-                            disabled={loading}
+                            className={activeTab === "explore" ? "tab-btn active" : "tab-btn"}
+                            onClick={() => setActiveTab("explore")}
+                            type="button"
                         >
-                            {loading ? (
-                                <>
-                                    <span className="spinner"></span>
-                                    Analyzing...
-                                </>
-                            ) : (
-                                <>
-                                    Find Service
-                                    <ArrowRight size={19} />
-                                </>
+                            <Sparkles size={16} />
+                            <span>Explore Services</span>
+                        </button>
+                        <button
+                            className={activeTab === "bookings" ? "tab-btn active" : "tab-btn"}
+                            onClick={() => setActiveTab("bookings")}
+                            type="button"
+                        >
+                            <Calendar size={16} />
+                            <span>{t.myBookings || "My Bookings"}</span>
+                            {bookings.filter(b => b.status === "Pending" || b.status === "Accepted" || b.status === "OnTheWay" || b.status === "InProgress").length > 0 && (
+                                <span className="tab-badge">
+                                    {bookings.filter(b => b.status === "Pending" || b.status === "Accepted" || b.status === "OnTheWay" || b.status === "InProgress").length}
+                                </span>
+                            )}
+                        </button>
+                    </div>
+                </div>
+
+                <div className="dashboard-nav-right">
+                    {/* Multilingual Toggle */}
+                    <button
+                        className="nav-action-pill"
+                        onClick={toggleLanguage}
+                        title="Change Language"
+                        type="button"
+                    >
+                        <Globe size={15} />
+                        <span>{lang === "en" ? "हिन्दी" : "English"}</span>
+                    </button>
+
+                    {/* Notification Bell */}
+                    <div className="notification-wrapper">
+                        <button
+                            className="nav-icon-btn"
+                            onClick={() => setShowNotifications(!showNotifications)}
+                            title="Notifications"
+                            type="button"
+                        >
+                            <Bell size={18} />
+                            {unreadNotifCount > 0 && (
+                                <span className="notif-badge">{unreadNotifCount}</span>
                             )}
                         </button>
 
+                        {showNotifications && (
+                            <div className="notification-dropdown">
+                                <div className="notif-header">
+                                    <strong>{t.notifications || "Notifications"}</strong>
+                                    {unreadNotifCount > 0 && (
+                                        <button onClick={handleMarkAllRead} type="button">
+                                            {t.markAllRead || "Mark read"}
+                                        </button>
+                                    )}
+                                </div>
+                                <div className="notif-list">
+                                    {notifications.length === 0 ? (
+                                        <div className="notif-empty">{t.noNotifications || "No notifications yet."}</div>
+                                    ) : (
+                                        notifications.map((notif) => (
+                                            <div
+                                                key={notif._id}
+                                                className={`notif-item ${notif.isRead ? "read" : "unread"}`}
+                                            >
+                                                <div className="notif-dot"></div>
+                                                <div className="notif-content-text">
+                                                    <p>{notif.message}</p>
+                                                    <small>{new Date(notif.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</small>
+                                                </div>
+                                            </div>
+                                        ))
+                                    )}
+                                </div>
+                            </div>
+                        )}
                     </div>
 
-                    {error && (
-                        <div className="ai-error">
-                            {error}
+                    {/* Profile & Logout */}
+                    <div className="dashboard-profile">
+                        <div className="profile-circle">
+                            {user.name ? user.name[0].toUpperCase() : "C"}
                         </div>
-                    )}
-
-                    <div className="quick-text">
-                        Try:
-
-                        <button
-                            onClick={() =>
-                                setRequest(
-                                    "My kitchen pipe is leaking and needs urgent repair"
-                                )
-                            }
-                        >
-                            Pipe leakage
-                        </button>
-
-                        <button
-                            onClick={() =>
-                                setRequest(
-                                    "I need an electrician for house wiring"
-                                )
-                            }
-                        >
-                            Electrical work
-                        </button>
-
-                        <button
-                            onClick={() =>
-                                setRequest(
-                                    "I need workers for agricultural field work"
-                                )
-                            }
-                        >
-                            Farm work
-                        </button>
-
+                        <div className="profile-info-block">
+                            <strong>{user.name || "Customer"}</strong>
+                            <button className="logout-link-btn" onClick={handleLogout} type="button">
+                                <LogOut size={12} /> {t.logout || "Logout"}
+                            </button>
+                        </div>
                     </div>
-
                 </div>
+            </header>
 
+            {/* TAB 1: EXPLORE & SERVICES */}
+            {activeTab === "explore" && (
+                <main className="dashboard-main-content">
 
-                {/* HERO IMAGE */}
-
-                <div className="hero-image">
-
-                    <div className="image-glow"></div>
-
-                    <img
-                        src="https://images.unsplash.com/photo-1581578731548-c64695cc6952?auto=format&fit=crop&w=1200&q=85"
-                        alt="Local service worker"
-                    />
-
-                    <div className="floating-stat stat-one">
-                        <ShieldCheck size={18} />
-
-                        <div>
-                            <strong>Verified</strong>
-                            <span>Local Workers</span>
-                        </div>
-                    </div>
-
-                    <div className="floating-stat stat-two">
-                        <Star size={18} />
-
-                        <div>
-                            <strong>4.8/5</strong>
-                            <span>Average Rating</span>
-                        </div>
-                    </div>
-
-                </div>
-
-            </section>
-
-
-            {/* AI RESULT */}
-
-            {result && (
-
-                <section className="ai-result-section">
-
-                    <div className="section-heading">
-
-                        <div>
-
-                            <div className="mini-label">
-                                <Sparkles size={15} />
-                                AI ANALYSIS
+                    {/* HERO & AI SMART MATCHING */}
+                    <section className="dashboard-hero-card">
+                        <div className="hero-left-area">
+                            <div className="ai-tag-pill">
+                                <Bot size={16} className="ai-bot-icon" />
+                                <span>Cooperative AI Smart Matching & Fair Opportunity</span>
                             </div>
 
-                            <h2>
-                                We understood your requirement
-                            </h2>
+                            <h1>
+                                Trusted Local Services,
+                                <br />
+                                <span className="hero-gradient-text">Empowered by Cooperatives.</span>
+                            </h1>
 
-                        </div>
-
-                        <div className="ai-success">
-                            <ShieldCheck size={17} />
-                            AI Analysis Complete
-                        </div>
-
-                    </div>
-
-
-                    <div className="result-grid">
-
-                        <div className="result-card">
-                            <span>Service</span>
-
-                            <strong>
-                                {result.service || "—"}
-                            </strong>
-                        </div>
-
-                        <div className="result-card">
-                            <span>Category</span>
-
-                            <strong>
-                                {result.category || "—"}
-                            </strong>
-                        </div>
-
-                        <div className="result-card">
-                            <span>Location</span>
-
-                            <strong>
-                                {result.location || "—"}
-                            </strong>
-                        </div>
-
-                        <div className="result-card priority-card">
-                            <span>Priority</span>
-
-                            <strong>
-                                {result.priority || "—"}
-                            </strong>
-                        </div>
-
-                        <div className="result-card">
-                            <span>Estimated Duration</span>
-
-                            <strong>
-                                {result.duration || "—"}
-                            </strong>
-                        </div>
-
-                    </div>
-
-
-                    <div className="ai-fair-price-note">
-
-                        <CircleDollarSign size={18} />
-
-                        <div>
-
-                            <strong>
-                                Fair-price visibility
-                            </strong>
-
-                            <span>
-                                {result.fairPrice ||
-                                    result.estimatedPrice ||
-                                    result.priceRange ||
-                                    "Prices are shown from cooperative data when configured."}
-                            </span>
-
-                        </div>
-
-                    </div>
-
-                </section>
-
-            )}
-
-
-            {/* AI MATCHING RESULTS */}
-
-            {result && (
-
-                <section
-                    className="ai-matching-section"
-                    id="ai-matching-section"
-                >
-
-                    <div className="section-heading ai-matching-heading">
-
-                        <div>
-
-                            <div className="mini-label">
-                                <Sparkles size={15} />
-                                SMART MATCHING
-                            </div>
-
-                            <h2>
-                                Best local matches for your request
-                            </h2>
-
-                            <p>
-                                We matched your requirement with available
-                                cooperative workers using service, availability,
-                                location and rating signals.
+                            <p className="hero-subtext">
+                                Tell our AI what you need. We match you with verified, highly rated local specialists with transparent pricing and fair gig distribution.
                             </p>
 
+                            {/* EMERGENCY TOGGLE */}
+                            <div className="emergency-banner-card">
+                                <div className="emergency-text-group">
+                                    <div className={`flame-icon-box ${isEmergency ? "active" : ""}`}>
+                                        <Flame size={20} />
+                                    </div>
+                                    <div>
+                                        <strong>{t.emergencyService || "Emergency Service"}</strong>
+                                        <p>Priority dispatch for urgent pipe leaks, electrical faults & breakdowns</p>
+                                    </div>
+                                </div>
+                                <label className="switch-toggle" title="Toggle Emergency Priority">
+                                    <input
+                                        type="checkbox"
+                                        checked={isEmergency}
+                                        onChange={(e) => setIsEmergency(e.target.checked)}
+                                    />
+                                    <span className="slider-round"></span>
+                                </label>
+                            </div>
+
+                            {/* AI SEARCH BOX */}
+                            <div className="ai-search-container">
+                                <div className="search-input-wrapper">
+                                    <Search size={20} className="search-icon-inside" />
+                                    <textarea
+                                        value={request}
+                                        onChange={(e) => setRequest(e.target.value)}
+                                        placeholder="What service do you need? (e.g. 'I need an electrician urgently for a wiring issue in Bhopal')"
+                                        rows={2}
+                                    />
+                                </div>
+                                <button
+                                    className="find-match-btn"
+                                    onClick={() => handleSmartMatch()}
+                                    disabled={aiLoading}
+                                    type="button"
+                                >
+                                    {aiLoading ? (
+                                        <>
+                                            <RefreshCw size={17} className="spin-icon" />
+                                            <span>Matching...</span>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <Sparkles size={17} />
+                                            <span>Find Best Match</span>
+                                        </>
+                                    )}
+                                </button>
+                            </div>
+
+                            {aiError && (
+                                <div className="ai-error-banner">
+                                    <AlertCircle size={16} />
+                                    <span>{aiError}</span>
+                                </div>
+                            )}
+
+                            {/* QUICK PROMPT SUGGESTIONS */}
+                            <div className="quick-suggestions-row">
+                                <span className="quick-label">Try asking:</span>
+                                <button
+                                    type="button"
+                                    className="prompt-chip"
+                                    onClick={() => handleSmartMatch("Urgent plumber for pipe leak in bathroom")}
+                                >
+                                    🔧 Pipe Leak Repair
+                                </button>
+                                <button
+                                    type="button"
+                                    className="prompt-chip"
+                                    onClick={() => handleSmartMatch("Need an electrician for wiring and fuse repair")}
+                                >
+                                    ⚡ Electrician for Wiring
+                                </button>
+                                <button
+                                    type="button"
+                                    className="prompt-chip"
+                                    onClick={() => handleSmartMatch("Deep house cleaning for 2BHK flat")}
+                                >
+                                    ✨ Home Deep Cleaning
+                                </button>
+                                <button
+                                    type="button"
+                                    className="prompt-chip"
+                                    onClick={() => handleSmartMatch("Experienced carpenter to fix wooden door")}
+                                >
+                                    🚪 Carpenter Door Fix
+                                </button>
+                            </div>
                         </div>
 
-                        <div className="ai-match-meta">
+                        {/* HERO RIGHT HIGHLIGHTS */}
+                        <div className="hero-right-visual">
+                            <div className="glass-benefit-card top-card">
+                                <div className="benefit-icon-circle green">
+                                    <ShieldCheck size={22} />
+                                </div>
+                                <div>
+                                    <strong>100% Cooperative Verified</strong>
+                                    <span>Certified skills & background-checked workers</span>
+                                </div>
+                            </div>
 
-                            {networkLoading
-                                ? "Loading local network..."
-                                : `${matchedWorkers.length} matches found`}
+                            <div className="glass-benefit-card mid-card">
+                                <div className="benefit-icon-circle blue">
+                                    <HeartHandshake size={22} />
+                                </div>
+                                <div>
+                                    <strong>Fair Opportunity Score</strong>
+                                    <span>Algorithms distribute jobs equitably among workers</span>
+                                </div>
+                            </div>
 
+                            <div className="glass-benefit-card bot-card">
+                                <div className="benefit-icon-circle amber">
+                                    <Clock3 size={22} />
+                                </div>
+                                <div>
+                                    <strong>Live 5-Stage Tracker</strong>
+                                    <span>Track your service in real time from start to completion</span>
+                                </div>
+                            </div>
                         </div>
+                    </section>
 
-                    </div>
+                    {/* AI MATCH RESULT PANEL (When Triggered) */}
+                    {aiResult && (
+                        <section className="ai-results-showcase">
+                            <div className="ai-results-header">
+                                <div className="ai-header-left">
+                                    <span className="pill-badge ai-badge-glow">
+                                        <Bot size={15} /> AI Smart Match Results
+                                    </span>
+                                    <h2>Top Recommended Specialists for You</h2>
+                                </div>
+                                <div className="match-confidence-badge">
+                                    <Sparkles size={15} />
+                                    <span>{aiConfidence}% Match Confidence</span>
+                                </div>
+                            </div>
 
+                            {/* Analysis Meta Bar */}
+                            <div className="ai-analysis-meta-bar">
+                                <div className="analysis-item">
+                                    <span className="label">Detected Service</span>
+                                    <strong>{aiResult.service || "General"}</strong>
+                                </div>
+                                <div className="analysis-item">
+                                    <span className="label">Urgency Level</span>
+                                    <span className={`urgency-pill ${aiResult.priority === "Emergency" ? "emergency" : "normal"}`}>
+                                        {aiResult.priority === "Emergency" ? "🚨 Urgent / Emergency" : "Standard Dispatch"}
+                                    </span>
+                                </div>
+                                <div className="analysis-item">
+                                    <span className="label">Service Location</span>
+                                    <strong>{aiResult.location || userLocation}</strong>
+                                </div>
+                                <div className="analysis-item">
+                                    <span className="label">Estimated Time</span>
+                                    <strong>{aiResult.duration || "1-2 Hours"}</strong>
+                                </div>
+                            </div>
 
-                    {networkError && (
-                        <div className="network-inline-error">
-                            {networkError}
-                        </div>
+                            {/* Matched Workers Cards Grid */}
+                            {aiMatchedWorkers.length > 0 ? (
+                                <div className="matched-workers-grid">
+                                    {aiMatchedWorkers.map((worker, idx) => (
+                                        <div key={worker._id || idx} className="matched-worker-card">
+                                            <div className="match-rank-badge">
+                                                #{idx + 1} AI Pick
+                                            </div>
+
+                                            <div className="worker-header-row">
+                                                <div className="worker-avatar-large">
+                                                    {worker.photo ? (
+                                                        <img src={worker.photo} alt={worker.name} />
+                                                    ) : (
+                                                        <UserRound size={28} />
+                                                    )}
+                                                    <span className={`status-dot ${worker.availability ? "online" : "offline"}`}></span>
+                                                </div>
+
+                                                <div className="worker-details-head">
+                                                    <h3>{worker.name}</h3>
+                                                    <span className="coop-name-tag">
+                                                        <Building2 size={13} />
+                                                        {worker.cooperativeName || "Cooperative Society"}
+                                                    </span>
+                                                    <div className="worker-rating-row">
+                                                        <Star size={14} className="star-filled" />
+                                                        <strong>{worker.rating || "4.8"}</strong>
+                                                        <span className="exp-text">• {worker.experience || 3}+ yrs experience</span>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            {/* Badges */}
+                                            <div className="worker-badges-row">
+                                                <span className="badge-chip verified">
+                                                    <ShieldCheck size={12} /> Verified
+                                                </span>
+                                                <span className="badge-chip skill">
+                                                    <BadgeCheck size={12} /> Certified Skill
+                                                </span>
+                                            </div>
+
+                                            {/* Fair Opportunity Score */}
+                                            <div className="opp-score-box">
+                                                <div className="opp-score-header">
+                                                    <span>Fair Opportunity Score</span>
+                                                    <strong>{worker.opportunityScore || 85}/100</strong>
+                                                    <button
+                                                        type="button"
+                                                        className="info-icon-btn"
+                                                        onClick={() => setScoreInfoWorker(worker)}
+                                                        title="How is this score calculated?"
+                                                    >
+                                                        <Info size={14} />
+                                                    </button>
+                                                </div>
+                                                <div className="opp-progress-bar">
+                                                    <div
+                                                        className="opp-progress-fill"
+                                                        style={{ width: `${worker.opportunityScore || 85}%` }}
+                                                    ></div>
+                                                </div>
+                                            </div>
+
+                                            <div className="matched-card-footer">
+                                                <div className="price-label-box">
+                                                    <small>Standard Visit</small>
+                                                    <strong>₹350</strong>
+                                                </div>
+                                                <button
+                                                    type="button"
+                                                    className="book-now-btn"
+                                                    onClick={() => openBookingModal(worker)}
+                                                >
+                                                    <Calendar size={15} />
+                                                    Book This Worker
+                                                </button>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            ) : (
+                                <div className="ai-empty-state">
+                                    <AlertCircle size={24} />
+                                    <p>No direct worker was matched specifically. Showing all active specialists below.</p>
+                                </div>
+                            )}
+                        </section>
                     )}
 
+                    {/* 12 SERVICE CATEGORIES FILTER */}
+                    <section className="categories-filter-strip">
+                        <div className="section-title-row">
+                            <div>
+                                <span className="section-eyebrow">BROWSE ALL SERVICES</span>
+                                <h2>Service Categories</h2>
+                            </div>
+                            <span className="category-count-label">12 Available Categories</span>
+                        </div>
 
-                    {!networkLoading &&
-                        matchedWorkers.length === 0 && (
+                        <div className="categories-horizontal-scroll">
+                            {ALL_CATEGORIES.map((cat) => {
+                                const IconComponent = cat.icon;
+                                const isActive = selectedCategory === cat.id;
 
-                            <div className="no-match-card">
+                                return (
+                                    <button
+                                        key={cat.id}
+                                        type="button"
+                                        className={`category-pill-btn ${isActive ? "active" : ""}`}
+                                        onClick={() => setSelectedCategory(cat.id)}
+                                    >
+                                        <IconComponent size={17} />
+                                        <span>{cat.name}</span>
+                                    </button>
+                                );
+                            })}
+                        </div>
+                    </section>
 
-                                <Search size={30} />
+                    {/* INTERACTIVE SERVICE MAP */}
+                    <ServiceMap
+                        userLocation={userLocation}
+                        workers={displayedWorkers}
+                        onSelectWorker={openBookingModal}
+                        title="Workers Near You"
+                        subtitle="Find trusted local professionals around your location."
+                        height="380px"
+                    />
 
-                                <h3>
-                                    No exact worker match found yet
-                                </h3>
+                    {/* WORKERS DIRECTORY */}
+                    <section className="workers-directory-section">
+                        <div className="section-title-row">
+                            <div>
+                                <span className="section-eyebrow">COOPERATIVE NETWORK</span>
+                                <h2>
+                                    {selectedCategory === "all" ? "Available Specialists" : `${selectedCategory} Specialists`}
+                                </h2>
+                            </div>
+                            <span className="workers-count-badge">
+                                {displayedWorkers.length} Workers Available
+                            </span>
+                        </div>
 
-                                <p>
-                                    Try a service description with a clearer
-                                    skill, such as plumber, electrician,
-                                    cleaner or agriculture worker.
-                                </p>
+                        {loadingNetwork ? (
+                            <div className="loading-state-card">
+                                <RefreshCw size={28} className="spin-icon" />
+                                <p>Loading cooperative specialists...</p>
+                            </div>
+                        ) : displayedWorkers.length === 0 ? (
+                            <div className="empty-workers-card">
+                                <Users size={40} className="empty-icon" />
+                                <h3>No specialists found</h3>
+                                <p>Try selecting another service category or resetting your filters.</p>
+                                <button
+                                    type="button"
+                                    className="reset-filter-btn"
+                                    onClick={() => { setSelectedCategory("all"); setIsEmergency(false); }}
+                                >
+                                    View All Categories
+                                </button>
+                            </div>
+                        ) : (
+                            <div className="directory-workers-grid">
+                                {displayedWorkers.map((worker) => (
+                                    <div key={worker._id} className="directory-worker-card">
+                                        <div className="card-top-header">
+                                            <div className="avatar-wrapper">
+                                                {worker.photo ? (
+                                                    <img src={worker.photo} alt={worker.name} />
+                                                ) : (
+                                                    <div className="avatar-placeholder">
+                                                        {worker.name ? worker.name[0].toUpperCase() : "W"}
+                                                    </div>
+                                                )}
+                                                <span className={`status-indicator ${worker.availability ? "available" : "busy"}`} />
+                                            </div>
 
+                                            <div className="rating-pill">
+                                                <Star size={13} className="star-filled" />
+                                                <span>{worker.rating || "4.8"}</span>
+                                            </div>
+                                        </div>
+
+                                        <div className="worker-main-info">
+                                            <h3>{worker.name}</h3>
+                                            <div className="coop-subtext">
+                                                <Building2 size={13} />
+                                                <span>{worker.cooperativeId?.societyName || "Cooperative Society"}</span>
+                                            </div>
+
+                                            <div className="worker-meta-specs">
+                                                <span className="spec-item">
+                                                    <MapPin size={13} /> {worker.location || userLocation}
+                                                </span>
+                                                <span className="spec-item">
+                                                    <Briefcase size={13} /> {worker.experience || 3} yrs exp
+                                                </span>
+                                            </div>
+
+                                            {/* Skill Badges */}
+                                            <div className="skill-tags-group">
+                                                {(Array.isArray(worker.skills) ? worker.skills : [worker.skills || "General"]).slice(0, 3).map((skill, sIdx) => (
+                                                    <span key={sIdx} className="skill-tag">
+                                                        {skill}
+                                                    </span>
+                                                ))}
+                                            </div>
+
+                                            {/* Fair Opportunity Score */}
+                                            <div className="opp-score-compact">
+                                                <div className="score-top-line">
+                                                    <span>Fair Opportunity Score</span>
+                                                    <strong>{worker.opportunityScore || 80}/100</strong>
+                                                    <button
+                                                        type="button"
+                                                        className="info-btn-mini"
+                                                        onClick={() => setScoreInfoWorker(worker)}
+                                                    >
+                                                        <Info size={13} />
+                                                    </button>
+                                                </div>
+                                                <div className="score-meter">
+                                                    <div
+                                                        className="score-fill"
+                                                        style={{ width: `${worker.opportunityScore || 80}%` }}
+                                                    ></div>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div className="card-bottom-actions">
+                                            <div className="price-block">
+                                                <small>Service Rate</small>
+                                                <strong>₹350</strong>
+                                            </div>
+                                            <button
+                                                type="button"
+                                                className="primary-book-btn"
+                                                onClick={() => openBookingModal(worker)}
+                                            >
+                                                <Calendar size={15} />
+                                                Book Service
+                                            </button>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </section>
+                </main>
+            )}
+
+            {/* TAB 2: MY BOOKINGS & 5-STAGE LIVE TRACKER */}
+            {activeTab === "bookings" && (
+                <main className="dashboard-main-content">
+                    <section className="my-bookings-container">
+                        <div className="section-title-row">
+                            <div>
+                                <span className="section-eyebrow">SERVICE MANAGEMENT</span>
+                                <h2>{t.myBookings || "My Bookings & Service Tracker"}</h2>
+                            </div>
+                            <button
+                                type="button"
+                                className="refresh-bookings-btn"
+                                onClick={fetchAllData}
+                            >
+                                <RefreshCw size={15} />
+                                Refresh Status
+                            </button>
+                        </div>
+
+                        {bookings.length === 0 ? (
+                            <div className="empty-bookings-box">
+                                <Calendar size={48} className="empty-cal-icon" />
+                                <h3>No Bookings Yet</h3>
+                                <p>You haven't requested any services yet. Explore our cooperative directory to book a certified specialist.</p>
+                                <button
+                                    type="button"
+                                    className="explore-cta-btn"
+                                    onClick={() => setActiveTab("explore")}
+                                >
+                                    Explore Available Services
+                                </button>
+                            </div>
+                        ) : (
+                            <div className="bookings-cards-stack">
+                                {bookings.map((booking) => {
+                                    // Status progression mapping (5 stages)
+                                    const stages = ["Pending", "Accepted", "OnTheWay", "InProgress", "Completed"];
+                                    const currentIdx = stages.indexOf(booking.status);
+                                    const isCancelledOrRejected = booking.status === "Cancelled" || booking.status === "Rejected";
+
+                                    return (
+                                        <div key={booking._id} className="booking-tracker-card">
+                                            {/* Booking Header */}
+                                            <div className="booking-card-top-bar">
+                                                <div className="service-info-group">
+                                                    <div className="service-icon-square">
+                                                        <Wrench size={22} />
+                                                    </div>
+                                                    <div>
+                                                        <div className="service-name-row">
+                                                            <h3>{booking.service || "Household Service"}</h3>
+                                                            {booking.isEmergency && (
+                                                                <span className="emergency-tag-mini">
+                                                                    <Flame size={12} /> Emergency
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                        <span className="booking-ref-number">
+                                                            Ref ID: #{booking._id.slice(-8).toUpperCase()} • Booked on {new Date(booking.createdAt).toLocaleDateString()}
+                                                        </span>
+                                                    </div>
+                                                </div>
+
+                                                <div className="booking-price-badge">
+                                                    <small>Total Amount</small>
+                                                    <strong>₹{booking.amount || 350}</strong>
+                                                    <span className={`payment-pill ${booking.paymentStatus === "Paid" ? "paid" : "pending"}`}>
+                                                        {booking.paymentStatus === "Paid" ? "✓ Paid" : "Payment Pending"}
+                                                    </span>
+                                                </div>
+                                            </div>
+
+                                            {/* Worker & Location Meta */}
+                                            <div className="booking-details-strip">
+                                                <div className="detail-cell">
+                                                    <UserRound size={15} />
+                                                    <span>Worker: <strong>{booking.workerId?.name || "Assigned Specialist"}</strong></span>
+                                                </div>
+                                                <div className="detail-cell">
+                                                    <MapPin size={15} />
+                                                    <span>Address: <strong>{booking.address || userLocation}</strong></span>
+                                                </div>
+                                                <div className="detail-cell">
+                                                    <Calendar size={15} />
+                                                    <span>Scheduled: <strong>{booking.date} at {booking.time}</strong></span>
+                                                </div>
+                                            </div>
+
+                                            {/* 5-STAGE SERVICE PROGRESS TRACKER */}
+                                            <div className="service-progress-container">
+                                                <h4>Live Service Tracker</h4>
+
+                                                {isCancelledOrRejected ? (
+                                                    <div className="status-cancelled-banner">
+                                                        <AlertCircle size={18} />
+                                                        <span>This booking was {booking.status}.</span>
+                                                    </div>
+                                                ) : (
+                                                    <div className="tracker-steps-line">
+                                                        <div className={`step-node ${currentIdx >= 0 ? "done" : ""}`}>
+                                                            <div className="step-circle">{currentIdx > 0 ? "✓" : "1"}</div>
+                                                            <span className="step-label">Booking Created</span>
+                                                        </div>
+                                                        <div className={`step-node ${currentIdx >= 1 ? "done" : ""}`}>
+                                                            <div className="step-circle">{currentIdx > 1 ? "✓" : "2"}</div>
+                                                            <span className="step-label">Worker Accepted</span>
+                                                        </div>
+                                                        <div className={`step-node ${currentIdx >= 2 ? "done" : ""}`}>
+                                                            <div className="step-circle">{currentIdx > 2 ? "✓" : "3"}</div>
+                                                            <span className="step-label">On The Way</span>
+                                                        </div>
+                                                        <div className={`step-node ${currentIdx >= 3 ? "done" : ""}`}>
+                                                            <div className="step-circle">{currentIdx > 3 ? "✓" : "4"}</div>
+                                                            <span className="step-label">In Progress</span>
+                                                        </div>
+                                                        <div className={`step-node ${currentIdx >= 4 ? "done" : ""}`}>
+                                                            <div className="step-circle">{currentIdx >= 4 ? "✓" : "5"}</div>
+                                                            <span className="step-label">Completed</span>
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </div>
+
+                                            {/* Action Buttons */}
+                                            <div className="booking-card-actions-bar">
+                                                {booking.status === "Pending" && (
+                                                    <button
+                                                        type="button"
+                                                        className="cancel-btn"
+                                                        onClick={() => handleCancelBooking(booking._id)}
+                                                    >
+                                                        Cancel Booking
+                                                    </button>
+                                                )}
+
+                                                {booking.status === "Completed" && booking.paymentStatus !== "Paid" && (
+                                                    <button
+                                                        type="button"
+                                                        className="pay-now-btn"
+                                                        onClick={() => setPaymentBooking(booking)}
+                                                    >
+                                                        <CreditCard size={15} />
+                                                        Pay Now (₹{booking.amount || 350})
+                                                    </button>
+                                                )}
+
+                                                {booking.status === "Completed" && (
+                                                    <button
+                                                        type="button"
+                                                        className="review-btn"
+                                                        onClick={() => {
+                                                            setReviewBooking(booking);
+                                                            setReviewForm({ rating: 5, comment: "", workPhoto: "" });
+                                                            setReviewSuccess("");
+                                                        }}
+                                                    >
+                                                        <Star size={15} />
+                                                        Rate & Review Service
+                                                    </button>
+                                                )}
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        )}
+                    </section>
+                </main>
+            )}
+
+            {/* MODAL 1: BOOKING MODAL */}
+            {bookingWorker && (
+                <div className="dashboard-modal-overlay">
+                    <div className="dashboard-modal-card">
+                        <div className="modal-header">
+                            <div>
+                                <h2>Book Cooperative Specialist</h2>
+                                <p>Confirm scheduling details with {bookingWorker.name}</p>
+                            </div>
+                            <button
+                                type="button"
+                                className="close-modal-btn"
+                                onClick={() => setBookingWorker(null)}
+                            >
+                                <X size={20} />
+                            </button>
+                        </div>
+
+                        {bookingSuccess && (
+                            <div className="modal-alert success">
+                                <CheckCircle2 size={18} />
+                                <span>{bookingSuccess}</span>
                             </div>
                         )}
 
-
-                    {matchedWorkers.length > 0 && (
-
-                        <div className="ai-match-grid">
-
-                            {matchedWorkers.map((worker, index) => {
-
-                                const priceInfo =
-                                    getPriceInfo(
-                                        worker,
-                                        result
-                                    );
-
-                                const workerName =
-                                    worker.name ||
-                                    worker.fullName ||
-                                    worker.workerName ||
-                                    `Worker ${index + 1}`;
-
-                                const skills =
-                                    getWorkerSkills(worker);
-
-                                const rating = Number(
-                                    worker.rating ||
-                                    worker.averageRating ||
-                                    0
-                                );
-
-                                return (
-
-                                    <article
-                                        className="ai-match-card"
-                                        key={
-                                            worker._id ||
-                                            `${workerName}-${index}`
-                                        }
-                                    >
-
-                                        <div className="ai-match-top">
-
-                                            <div className="match-avatar">
-
-                                                {worker.photo ? (
-
-                                                    <img
-                                                        src={worker.photo}
-                                                        alt={workerName}
-                                                    />
-
-                                                ) : (
-
-                                                    <UserRound size={26} />
-
-                                                )}
-
-                                            </div>
-
-                                            <div className="match-score">
-                                                <Sparkles size={13} />
-                                                {worker.__match.score}% match
-                                            </div>
-
-                                        </div>
-
-
-                                        <div className="ai-match-body">
-
-                                            <div className="match-name-row">
-
-                                                <div>
-
-                                                    <h3>
-                                                        {workerName}
-                                                    </h3>
-
-                                                    <p>
-                                                        {skills.join(", ") ||
-                                                            "Skilled Professional"}
-                                                    </p>
-
-                                                </div>
-
-                                                {worker.__cooperativeVerified && (
-
-                                                    <BadgeCheck
-                                                        size={20}
-                                                        className="verified-icon"
-                                                        title="Verified cooperative"
-                                                    />
-
-                                                )}
-
-                                            </div>
-
-
-                                            <div className="match-details">
-
-                                                <span>
-                                                    <MapPin size={14} />
-
-                                                    {worker.location ||
-                                                        "Local network"}
-                                                </span>
-
-
-                                                <span>
-
-                                                    {isAvailable(worker) ? (
-
-                                                        <>
-                                                            <CheckCircle2
-                                                                size={14}
-                                                            />
-                                                            Available now
-                                                        </>
-
-                                                    ) : (
-
-                                                        <>
-                                                            <Clock3
-                                                                size={14}
-                                                            />
-                                                            Availability
-                                                            varies
-                                                        </>
-
-                                                    )}
-
-                                                </span>
-
-
-                                                <span>
-
-                                                    <Star size={14} />
-
-                                                    {rating > 0
-                                                        ? `${rating.toFixed(1)}/5`
-                                                        : "New worker"}
-
-                                                </span>
-
-                                            </div>
-
-
-                                            <div className="fair-price-box">
-
-                                                <div>
-
-                                                    <CircleDollarSign
-                                                        size={18}
-                                                    />
-
-                                                    <div>
-
-                                                        <span>
-                                                            Fair Price
-                                                        </span>
-
-                                                        <strong>
-                                                            {
-                                                                priceInfo.text
-                                                            }
-                                                        </strong>
-
-                                                    </div>
-
-                                                </div>
-
-                                                <small>
-                                                    {
-                                                        priceInfo.source
-                                                    }
-                                                </small>
-
-                                            </div>
-
-
-                                            <div className="match-reasons">
-
-                                                {worker.__match.skillMatch && (
-
-                                                    <span>
-
-                                                        <CheckCircle2
-                                                            size={13}
-                                                        />
-
-                                                        Skill matched
-
-                                                    </span>
-
-                                                )}
-
-                                                {worker.__match.locationMatch && (
-
-                                                    <span>
-
-                                                        <CheckCircle2
-                                                            size={13}
-                                                        />
-
-                                                        Nearby
-
-                                                    </span>
-
-                                                )}
-
-                                                {worker.__match.available && (
-
-                                                    <span>
-
-                                                        <CheckCircle2
-                                                            size={13}
-                                                        />
-
-                                                        Available
-
-                                                    </span>
-
-                                                )}
-
-                                            </div>
-
-                                        </div>
-
-
-                                        <div className="ai-match-footer">
-
-                                            <span>
-                                                {worker.__cooperativeName ||
-                                                    "Cooperative network"}
-                                            </span>
-
-                                            <button
-                                                type="button"
-                                                onClick={() =>
-                                                    setSelectedWorker(
-                                                        worker
-                                                    )
-                                                }
-                                            >
-                                                View details
-
-                                                <ChevronRight
-                                                    size={15}
-                                                />
-
-                                            </button>
-
-                                        </div>
-
-                                    </article>
-
-                                );
-                            })}
-
-                        </div>
-
-                    )}
-
-                </section>
-
-            )}
-
-
-            {/* MATCHED COOPERATIVE SOCIETIES */}
-
-            {result && matchedSocieties.length > 0 && (
-
-                <section
-                    className="matched-societies-section"
-                    id="matched-societies-section"
-                >
-
-                    <div className="section-heading">
-
-                        <div>
-
-                            <div className="mini-label">
-                                <Building2 size={15} />
-                                AI-RECOMMENDED SOCIETIES
+                        {bookingError && (
+                            <div className="modal-alert error">
+                                <AlertCircle size={18} />
+                                <span>{bookingError}</span>
+                            </div>
+                        )}
+
+                        <form onSubmit={handleCreateBooking} className="modal-form">
+                            <div className="form-group-grid">
+                                <div className="form-input-field">
+                                    <label>Service Requirement</label>
+                                    <input
+                                        type="text"
+                                        value={bookingForm.service}
+                                        onChange={(e) => setBookingForm({ ...bookingForm, service: e.target.value })}
+                                        required
+                                    />
+                                </div>
+
+                                <div className="form-input-field">
+                                    <label>Estimated Amount (₹)</label>
+                                    <input
+                                        type="number"
+                                        value={bookingForm.amount}
+                                        onChange={(e) => setBookingForm({ ...bookingForm, amount: Number(e.target.value) })}
+                                        required
+                                    />
+                                </div>
                             </div>
 
-                            <h2>
-                                Cooperatives relevant to your request
-                            </h2>
+                            <div className="form-group-grid">
+                                <div className="form-input-field">
+                                    <label>Service Date</label>
+                                    <input
+                                        type="date"
+                                        value={bookingForm.date}
+                                        onChange={(e) => setBookingForm({ ...bookingForm, date: e.target.value })}
+                                        required
+                                    />
+                                </div>
 
-                            <p>
-                                These societies have workers matching the
-                                service identified from your request.
+                                <div className="form-input-field">
+                                    <label>Preferred Time</label>
+                                    <input
+                                        type="text"
+                                        value={bookingForm.time}
+                                        onChange={(e) => setBookingForm({ ...bookingForm, time: e.target.value })}
+                                        placeholder="e.g. 10:30 AM"
+                                        required
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="form-input-field">
+                                <label>Service Address / Location</label>
+                                <input
+                                    type="text"
+                                    value={bookingForm.address}
+                                    onChange={(e) => setBookingForm({ ...bookingForm, address: e.target.value })}
+                                    placeholder="Enter street, house number, area"
+                                    required
+                                />
+                            </div>
+
+                            <div className="form-input-field">
+                                <label>Special Instructions / Notes</label>
+                                <textarea
+                                    value={bookingForm.notes}
+                                    onChange={(e) => setBookingForm({ ...bookingForm, notes: e.target.value })}
+                                    placeholder="Describe specific issues (e.g., kitchen sink pipe leakage, bring spare parts)"
+                                    rows={2}
+                                />
+                            </div>
+
+                            <div className="modal-checkbox-row">
+                                <label>
+                                    <input
+                                        type="checkbox"
+                                        checked={bookingForm.isEmergency}
+                                        onChange={(e) => setBookingForm({ ...bookingForm, isEmergency: e.target.checked })}
+                                    />
+                                    <span>🚨 Mark as Emergency Request (Priority Dispatch)</span>
+                                </label>
+                            </div>
+
+                            <div className="modal-footer-actions">
+                                <button
+                                    type="button"
+                                    className="modal-cancel-btn"
+                                    onClick={() => setBookingWorker(null)}
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    type="submit"
+                                    className="modal-submit-btn"
+                                    disabled={bookingSubmitting}
+                                >
+                                    {bookingSubmitting ? "Placing Booking..." : "Confirm & Book Service"}
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
+
+            {/* MODAL 2: FAIR OPPORTUNITY SCORE INFO */}
+            {scoreInfoWorker && (
+                <div className="dashboard-modal-overlay">
+                    <div className="dashboard-modal-card">
+                        <div className="modal-header">
+                            <div>
+                                <h2>Fair Opportunity Score Breakdown</h2>
+                                <p>Algorithmic explanation for {scoreInfoWorker.name}</p>
+                            </div>
+                            <button
+                                type="button"
+                                className="close-modal-btn"
+                                onClick={() => setScoreInfoWorker(null)}
+                            >
+                                <X size={20} />
+                            </button>
+                        </div>
+
+                        <div className="score-modal-body">
+                            <div className="score-badge-circle">
+                                <strong>{scoreInfoWorker.opportunityScore || 85}</strong>
+                                <span>/ 100</span>
+                            </div>
+
+                            <h3>Why this score?</h3>
+                            <p className="score-explanation">
+                                SkillDnest calculates the Fair Opportunity Score to balance customer quality with equitable gig distribution among cooperative members:
                             </p>
 
+                            <div className="score-breakdown-list">
+                                <div className="breakdown-item">
+                                    <div className="item-title">
+                                        <TrendingUp size={16} /> Workload Balance & Queue
+                                    </div>
+                                    <span className="item-pts">+35 Points</span>
+                                </div>
+                                <div className="breakdown-item">
+                                    <div className="item-title">
+                                        <Star size={16} /> Customer Ratings & Satisfaction
+                                    </div>
+                                    <span className="item-pts">+25 Points</span>
+                                </div>
+                                <div className="breakdown-item">
+                                    <div className="item-title">
+                                        <CheckCircle2 size={16} /> Availability & Immediate Response
+                                    </div>
+                                    <span className="item-pts">+20 Points</span>
+                                </div>
+                                <div className="breakdown-item">
+                                    <div className="item-title">
+                                        <Award size={16} /> Experience & Certified Skills
+                                    </div>
+                                    <span className="item-pts">+20 Points</span>
+                                </div>
+                            </div>
                         </div>
 
-                        <button
-                            type="button"
-                            className="view-all"
-                            onClick={() =>
-                                scrollToSection(
-                                    "cooperative-network-section"
-                                )
-                            }
-                        >
-                            View all societies
-                            <ArrowRight size={17} />
-                        </button>
-
+                        <div className="modal-footer-actions">
+                            <button
+                                type="button"
+                                className="modal-submit-btn full-width"
+                                onClick={() => setScoreInfoWorker(null)}
+                            >
+                                Got it
+                            </button>
+                        </div>
                     </div>
+                </div>
+            )}
 
+            {/* MODAL 3: DIGITAL PAYMENT MODAL */}
+            {paymentBooking && (
+                <div className="dashboard-modal-overlay">
+                    <div className="dashboard-modal-card">
+                        <div className="modal-header">
+                            <div>
+                                <h2>Digital Payment Simulation</h2>
+                                <p>Secure service settlement for Ref #{paymentBooking._id.slice(-6).toUpperCase()}</p>
+                            </div>
+                            <button
+                                type="button"
+                                className="close-modal-btn"
+                                onClick={() => setPaymentBooking(null)}
+                            >
+                                <X size={20} />
+                            </button>
+                        </div>
 
-                    <div className="matched-societies-grid">
+                        {paymentSuccess ? (
+                            <div className="modal-alert success">
+                                <CheckCircle2 size={18} />
+                                <span>{paymentSuccess}</span>
+                            </div>
+                        ) : (
+                            <form onSubmit={handleProcessPayment} className="modal-form">
+                                <div className="payment-amount-display">
+                                    <span>Total Payable Amount</span>
+                                    <h3>₹{paymentBooking.amount || 350}</h3>
+                                </div>
 
-                        {matchedSocieties.map((society) => {
-
-                            const societyWorkers =
-                                getSocietyWorkers(society);
-
-                            const verified =
-                                normalizeStatus(
-                                    society.status ||
-                                    society.verificationStatus ||
-                                    society.verifiedStatus
-                                ) === "Verified";
-
-                            const availableCount =
-                                societyWorkers.filter((worker) =>
-                                    isAvailable(worker)
-                                ).length;
-
-                            const priceInfo =
-                                societyWorkers
-                                    .map((worker) =>
-                                        getPriceInfo(
-                                            worker,
-                                            result
-                                        )
-                                    )
-                                    .find(
-                                        (price) =>
-                                            price.text !==
-                                            "Not configured"
-                                    );
-
-                            return (
-
-                                <article
-                                    key={society._id}
-                                    className="matched-society-card"
-                                >
-
-                                    <div className="matched-society-header">
-
-                                        <div className="society-icon">
-                                            <Building2 size={22} />
-                                        </div>
-
-                                        {verified && (
-
-                                            <span className="verified-pill">
-                                                <ShieldCheck size={13} />
-                                                Verified
-                                            </span>
-
-                                        )}
-
-                                    </div>
-
-
-                                    <h3>
-                                        {getSocietyName(society)}
-                                    </h3>
-
-
-                                    <p className="society-location">
-
-                                        <MapPin size={14} />
-
-                                        {getSocietyLocation(society)}
-
-                                    </p>
-
-
-                                    <div className="matched-society-stats">
-
-                                        <div>
-
-                                            <strong>
-                                                {society.matchedWorkerCount ||
-                                                    0}
-                                            </strong>
-
-                                            <span>
-                                                matched workers
-                                            </span>
-
-                                        </div>
-
-
-                                        <div>
-
-                                            <strong>
-                                                {availableCount}
-                                            </strong>
-
-                                            <span>
-                                                available
-                                            </span>
-
-                                        </div>
-
-                                    </div>
-
-
-                                    <div className="society-price">
-
-                                        <CircleDollarSign size={17} />
-
-                                        <div>
-
-                                            <span>
-                                                Fair price
-                                            </span>
-
-                                            <strong>
-                                                {priceInfo?.text ||
-                                                    "Not configured"}
-                                            </strong>
-
-                                        </div>
-
-                                    </div>
-
-
-                                    <div className="matched-society-actions">
-
+                                <div className="payment-method-selector">
+                                    <label>Select Payment Mode</label>
+                                    <div className="methods-grid">
                                         <button
                                             type="button"
-                                            onClick={() =>
-                                                scrollToSection(
-                                                    "cooperative-network-section"
-                                                )
-                                            }
+                                            className={`method-tile ${paymentMethod === "UPI" ? "active" : ""}`}
+                                            onClick={() => setPaymentMethod("UPI")}
                                         >
-                                            View society
-                                            <ChevronRight size={15} />
+                                            <Zap size={20} />
+                                            <span>UPI / QR</span>
                                         </button>
-
+                                        <button
+                                            type="button"
+                                            className={`method-tile ${paymentMethod === "Card" ? "active" : ""}`}
+                                            onClick={() => setPaymentMethod("Card")}
+                                        >
+                                            <CreditCard size={20} />
+                                            <span>Debit / Credit Card</span>
+                                        </button>
+                                        <button
+                                            type="button"
+                                            className={`method-tile ${paymentMethod === "Cash" ? "active" : ""}`}
+                                            onClick={() => setPaymentMethod("Cash")}
+                                        >
+                                            <CircleDollarSign size={20} />
+                                            <span>Cash on Completion</span>
+                                        </button>
                                     </div>
+                                </div>
 
-                                </article>
-
-                            );
-                        })}
-
+                                <div className="modal-footer-actions">
+                                    <button
+                                        type="button"
+                                        className="modal-cancel-btn"
+                                        onClick={() => setPaymentBooking(null)}
+                                    >
+                                        Close
+                                    </button>
+                                    <button
+                                        type="submit"
+                                        className="modal-submit-btn"
+                                        disabled={paymentSubmitting}
+                                    >
+                                        {paymentSubmitting ? "Processing..." : `Pay ₹${paymentBooking.amount || 350}`}
+                                    </button>
+                                </div>
+                            </form>
+                        )}
                     </div>
-
-                </section>
-
+                </div>
             )}
 
-
-            {/* COOPERATIVE NETWORK */}
-
-            <section
-                className="cooperative-network-section"
-                id="cooperative-network-section"
-            >
-
-                <div className="section-heading">
-
-                    <div>
-
-                        <div className="mini-label">
-                            <Building2 size={15} />
-                            COOPERATIVE NETWORK
+            {/* MODAL 4: RATING & REVIEW MODAL */}
+            {reviewBooking && (
+                <div className="dashboard-modal-overlay">
+                    <div className="dashboard-modal-card">
+                        <div className="modal-header">
+                            <div>
+                                <h2>Rate & Review Completed Service</h2>
+                                <p>Help cooperative workers improve their service quality</p>
+                            </div>
+                            <button
+                                type="button"
+                                className="close-modal-btn"
+                                onClick={() => setReviewBooking(null)}
+                            >
+                                <X size={20} />
+                            </button>
                         </div>
 
-                        <h2>
-                            Trusted local societies
-                        </h2>
-
-                        <p>
-                            Discover workers through verified cooperative
-                            societies instead of dealing with unknown
-                            service providers.
-                        </p>
-
-                    </div>
-
-                    <div className="network-summary">
-
-                        <strong>
-                            {cooperatives.length}
-                        </strong>
-
-                        <span>
-                            societies connected
-                        </span>
-
-                    </div>
-
-                </div>
-
-
-                {networkLoading ? (
-
-                    <div className="network-loading-card">
-
-                        <span className="spinner"></span>
-
-                        Loading cooperative network...
-
-                    </div>
-
-                ) : cooperatives.length === 0 ? (
-
-                    <div className="no-match-card">
-
-                        <Building2 size={30} />
-
-                        <h3>
-                            Cooperative network is currently empty
-                        </h3>
-
-                        <p>
-                            Once societies register workers, they will appear
-                            here for customers to discover.
-                        </p>
-
-                    </div>
-
-                ) : (
-
-                    <div className="cooperative-network-grid">
-
-                        {cooperatives.slice(0, 6).map((society) => {
-
-                            const societyWorkers =
-                                getSocietyWorkers(
-                                    society
-                                );
-
-                            const verified =
-                                normalizeStatus(
-                                    society.status ||
-                                    society.verificationStatus ||
-                                    society.verifiedStatus
-                                ) === "Verified";
-
-                            const societySkills =
-                                Array.from(
-                                    new Set(
-                                        societyWorkers.flatMap(
-                                            (worker) =>
-                                                getWorkerSkills(worker)
-                                        )
-                                    )
-                                ).slice(0, 4);
-
-                            const availableCount =
-                                societyWorkers.filter(
-                                    (worker) =>
-                                        isAvailable(worker)
-                                ).length;
-
-                            const societyPrice =
-                                societyWorkers
-                                    .map((worker) =>
-                                        getPriceInfo(
-                                            worker,
-                                            result
-                                        )
-                                    )
-                                    .find(
-                                        (price) =>
-                                            price.text !==
-                                            "Not configured"
-                                    );
-
-                            return (
-
-                                <article
-                                    className="cooperative-network-card"
-                                    key={society._id}
-                                >
-
-                                    <div className="society-card-top">
-
-                                        <div className="society-icon">
-                                            <Building2 size={23} />
-                                        </div>
-
-                                        {verified && (
-
-                                            <span className="verified-pill">
-                                                <ShieldCheck size={13} />
-                                                Verified
-                                            </span>
-
-                                        )}
-
+                        {reviewSuccess ? (
+                            <div className="modal-alert success">
+                                <CheckCircle2 size={18} />
+                                <span>{reviewSuccess}</span>
+                            </div>
+                        ) : (
+                            <form onSubmit={handleSubmitReview} className="modal-form">
+                                <div className="rating-stars-picker">
+                                    <label>Service Rating</label>
+                                    <div className="stars-row">
+                                        {[1, 2, 3, 4, 5].map((star) => (
+                                            <button
+                                                key={star}
+                                                type="button"
+                                                className={`star-btn ${reviewForm.rating >= star ? "active" : ""}`}
+                                                onClick={() => setReviewForm({ ...reviewForm, rating: star })}
+                                            >
+                                                ★
+                                            </button>
+                                        ))}
                                     </div>
+                                </div>
 
-
-                                    <h3>
-                                        {getSocietyName(society)}
-                                    </h3>
-
-
-                                    <p className="society-location">
-
-                                        <MapPin size={14} />
-
-                                        {getSocietyLocation(
-                                            society
-                                        )}
-
-                                    </p>
-
-
-                                    <div className="society-metrics">
-
-                                        <div>
-
-                                            <Users size={16} />
-
-                                            <strong>
-                                                {societyWorkers.length}
-                                            </strong>
-
-                                            <span>
-                                                workers
-                                            </span>
-
-                                        </div>
-
-
-                                        <div>
-
-                                            <CheckCircle2 size={16} />
-
-                                            <strong>
-                                                {availableCount}
-                                            </strong>
-
-                                            <span>
-                                                available
-                                            </span>
-
-                                        </div>
-
-                                    </div>
-
-
-                                    <div className="society-services">
-
-                                        {societySkills.length > 0 ? (
-
-                                            societySkills.map(
-                                                (skill) => (
-
-                                                    <span
-                                                        key={skill}
-                                                    >
-                                                        {skill}
-                                                    </span>
-
-                                                )
-                                            )
-
-                                        ) : (
-
-                                            <span>
-                                                Local skilled services
-                                            </span>
-
-                                        )}
-
-                                    </div>
-
-
-                                    <div className="society-price">
-
-                                        <CircleDollarSign
-                                            size={17}
-                                        />
-
-                                        <div>
-
-                                            <span>
-                                                Fair price
-                                            </span>
-
-                                            <strong>
-                                                {societyPrice?.text ||
-                                                    "Not configured"}
-                                            </strong>
-
-                                        </div>
-
-                                    </div>
-
-                                </article>
-                            );
-                        })}
-
-                    </div>
-
-                )}
-
-            </section>
-
-
-            {/* SELECTED WORKER DETAILS */}
-
-            {selectedWorker && (
-
-                <div
-                    className="worker-modal-backdrop"
-                    onClick={() =>
-                        setSelectedWorker(null)
-                    }
-                >
-
-                    <div
-                        className="worker-modal"
-                        onClick={(event) =>
-                            event.stopPropagation()
-                        }
-                    >
-
-                        <button
-                            type="button"
-                            className="worker-modal-close"
-                            onClick={() =>
-                                setSelectedWorker(null)
-                            }
-                            aria-label="Close worker details"
-                        >
-                            ×
-                        </button>
-
-
-                        <div className="worker-modal-header">
-
-                            <div className="modal-worker-avatar">
-
-                                {selectedWorker.photo ? (
-
-                                    <img
-                                        src={
-                                            selectedWorker.photo
-                                        }
-                                        alt={
-                                            selectedWorker.name ||
-                                            "Worker"
-                                        }
+                                <div className="form-input-field">
+                                    <label>Feedback & Comments</label>
+                                    <textarea
+                                        value={reviewForm.comment}
+                                        onChange={(e) => setReviewForm({ ...reviewForm, comment: e.target.value })}
+                                        placeholder="Share your experience (punctuality, workmanship, behavior)..."
+                                        rows={3}
+                                        required
                                     />
+                                </div>
 
-                                ) : (
+                                <div className="form-input-field">
+                                    <label>Work Photo URL (Optional)</label>
+                                    <input
+                                        type="url"
+                                        value={reviewForm.workPhoto}
+                                        onChange={(e) => setReviewForm({ ...reviewForm, workPhoto: e.target.value })}
+                                        placeholder="https://example.com/work-photo.jpg"
+                                    />
+                                </div>
 
-                                    <UserRound size={28} />
-
-                                )}
-
-                            </div>
-
-
-                            <div>
-
-                                <h3>
-                                    {selectedWorker.name ||
-                                        "Skilled Worker"}
-                                </h3>
-
-                                <p>
-                                    {
-                                        selectedWorker.__cooperativeName ||
-                                        "Cooperative network"
-                                    }
-                                </p>
-
-                            </div>
-
-                        </div>
-
-
-                        <div className="worker-modal-grid">
-
-                            <div>
-
-                                <span>
-                                    Skills
-                                </span>
-
-                                <strong>
-                                    {getWorkerSkills(
-                                        selectedWorker
-                                    ).join(", ") ||
-                                        "Not specified"}
-                                </strong>
-
-                            </div>
-
-
-                            <div>
-
-                                <span>
-                                    Location
-                                </span>
-
-                                <strong>
-                                    {
-                                        selectedWorker.location ||
-                                        "Local network"
-                                    }
-                                </strong>
-
-                            </div>
-
-
-                            <div>
-
-                                <span>
-                                    Experience
-                                </span>
-
-                                <strong>
-                                    {selectedWorker.experience
-                                        ? `${selectedWorker.experience} years`
-                                        : "Not specified"}
-                                </strong>
-
-                            </div>
-
-
-                            <div>
-
-                                <span>
-                                    Availability
-                                </span>
-
-                                <strong>
-
-                                    {isAvailable(
-                                        selectedWorker
-                                    )
-                                        ? "Available"
-                                        : "Not available"}
-
-                                </strong>
-
-                            </div>
-
-                        </div>
-
-
-                        <div className="modal-price-highlight">
-
-                            <CircleDollarSign size={21} />
-
-                            <div>
-
-                                <span>
-                                    Fair Price
-                                </span>
-
-                                <strong>
-                                    {
-                                        getPriceInfo(
-                                            selectedWorker,
-                                            result
-                                        ).text
-                                    }
-                                </strong>
-
-                            </div>
-
-                        </div>
-
-
-                        <div className="modal-trust-note">
-
-                            <ShieldCheck size={18} />
-
-                            <span>
-                                Worker is connected through a cooperative
-                                network. Final price can be confirmed before
-                                booking.
-                            </span>
-
-                        </div>
-
+                                <div className="modal-footer-actions">
+                                    <button
+                                        type="button"
+                                        className="modal-cancel-btn"
+                                        onClick={() => setReviewBooking(null)}
+                                    >
+                                        Cancel
+                                    </button>
+                                    <button
+                                        type="submit"
+                                        className="modal-submit-btn"
+                                        disabled={reviewSubmitting}
+                                    >
+                                        {reviewSubmitting ? "Submitting..." : "Submit Review"}
+                                    </button>
+                                </div>
+                            </form>
+                        )}
                     </div>
-
                 </div>
-
             )}
-
-
-            {/* SERVICES */}
-
-            <section className="services-section">
-
-                <div className="section-heading">
-
-                    <div>
-
-                        <div className="mini-label">
-                            SERVICES
-                        </div>
-
-                        <h2>
-                            Explore local services
-                        </h2>
-
-                    </div>
-
-                    <button className="view-all">
-                        View all
-                        <ArrowRight size={17} />
-                    </button>
-
-                </div>
-
-
-                <div className="service-grid">
-
-                    {services.map((service, index) => (
-
-                        <div
-                            className="service-card"
-                            key={index}
-                        >
-
-                            <div className="service-icon">
-                                {service.icon}
-                            </div>
-
-                            <div>
-                                <h3>{service.title}</h3>
-                                <p>{service.text}</p>
-                            </div>
-
-                            <ArrowRight
-                                className="service-arrow"
-                                size={18}
-                            />
-
-                        </div>
-
-                    ))}
-
-                </div>
-
-            </section>
-
-
-            {/* COOPERATIVE PREVIEW */}
-
-            <section className="cooperative-section">
-
-                <div className="cooperative-image">
-
-                    <img
-                        src="https://images.unsplash.com/photo-1500382017468-9049fed747ef?auto=format&fit=crop&w=1200&q=85"
-                        alt="Cooperative agriculture"
-                    />
-
-                </div>
-
-                <div className="cooperative-content">
-
-                    <div className="mini-label">
-
-                        <Building2 size={16} />
-
-                        COOPERATIVE NETWORK
-
-                    </div>
-
-                    <h2>
-                        Trusted workers from
-                        <span> local societies</span>
-                    </h2>
-
-                    <p>
-                        Compare services, prices and verified workers
-                        from different cooperative societies before
-                        booking.
-                    </p>
-
-                    <div className="cooperative-stats">
-
-                        <div>
-                            <Users size={21} />
-                            <strong>Verified Workers</strong>
-                        </div>
-
-                        <div>
-                            <ShieldCheck size={21} />
-                            <strong>Trusted Societies</strong>
-                        </div>
-
-                        <div>
-                            <Clock3 size={21} />
-                            <strong>Quick Response</strong>
-                        </div>
-
-                    </div>
-
-                    <button
-                        className="explore-btn"
-                        onClick={() =>
-                            scrollToSection(
-                                "cooperative-network-section"
-                            )
-                        }
-                    >
-                        Explore Cooperatives
-                        <ArrowRight size={18} />
-                    </button>
-
-                </div>
-
-            </section>
-
-
-            <footer className="dashboard-footer">
-                <strong>SkillDnest</strong>
-                <span>Local Skills, Trusted Services</span>
-            </footer>
-
         </div>
     );
 }
