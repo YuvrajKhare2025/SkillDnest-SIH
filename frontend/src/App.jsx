@@ -13,6 +13,8 @@ import CooperativeDashboard from "./pages/CooperativeDashboard";
 
 import AddWorker from "./pages/AddWorker";
 import WorkerManagement from "./pages/WorkerManagement";
+import WorkerLogin from "./pages/WorkerLogin";
+import WorkerDashboard from "./pages/WorkerDashboard";
 
 function App() {
     return (
@@ -82,6 +84,16 @@ function App() {
                 <Route
                     path="/worker-management"
                     element={<WorkerManagement />}
+                />
+
+                <Route
+                    path="/worker-login"
+                    element={<WorkerLogin />}
+                />
+
+                <Route
+                    path="/worker-dashboard"
+                    element={<WorkerDashboard />}
                 />
 
             </Routes>

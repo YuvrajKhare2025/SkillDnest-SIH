@@ -319,6 +319,100 @@ router.get("/opportunity-score", async (req, res) => {
 });
 
 // ======================================================
+// GET MY WORKER PROFILE (Logged-in Worker)
+// ======================================================
+router.get("/me", protect, async (req, res) => {
+    try {
+        let worker = await Worker.findOne({
+            $or: [{ userId: req.user.id }, { phone: req.user.phone }]
+        }).populate("cooperativeId", "societyName district phone contactPerson");
+
+        if (!worker) {
+            return res.status(404).json({
+                message: "Worker profile not found for this account"
+            });
+        }
+
+        res.status(200).json(worker);
+    } catch (error) {
+        res.status(500).json({
+            message: "Error fetching worker profile",
+            error: error.message
+        });
+    }
+});
+
+// ======================================================
+// TOGGLE MY AVAILABILITY (Logged-in Worker)
+// ======================================================
+router.patch("/me/availability", protect, async (req, res) => {
+    try {
+        const { availability } = req.body;
+        const worker = await Worker.findOne({
+            $or: [{ userId: req.user.id }, { phone: req.user.phone }]
+        });
+
+        if (!worker) {
+            return res.status(404).json({ message: "Worker not found" });
+        }
+
+        worker.availability = availability !== undefined ? Boolean(availability) : !worker.availability;
+        await worker.save();
+
+        res.status(200).json({
+            message: `Availability updated to ${worker.availability ? "Active" : "Offline"}`,
+            availability: worker.availability,
+            worker
+        });
+    } catch (error) {
+        res.status(500).json({
+            message: "Error updating availability",
+            error: error.message
+        });
+    }
+});
+
+// ======================================================
+// GET MY WORKER STATS & EARNINGS
+// ======================================================
+router.get("/me/stats", protect, async (req, res) => {
+    try {
+        const worker = await Worker.findOne({
+            $or: [{ userId: req.user.id }, { phone: req.user.phone }]
+        });
+
+        if (!worker) {
+            return res.status(404).json({ message: "Worker not found" });
+        }
+
+        const totalBookings = await Booking.countDocuments({ workerId: worker._id });
+        const completedBookings = await Booking.countDocuments({ workerId: worker._id, status: "Completed" });
+        const activeBookings = await Booking.countDocuments({ workerId: worker._id, status: { $in: ["Accepted", "OnTheWay", "InProgress"] } });
+        const pendingBookings = await Booking.countDocuments({ workerId: worker._id, status: "Pending" });
+
+        const bookings = await Booking.find({ workerId: worker._id, status: "Completed" });
+        const totalEarnings = bookings.reduce((sum, b) => sum + (b.amount || 0), 0);
+
+        res.status(200).json({
+            workerId: worker._id,
+            name: worker.name,
+            rating: worker.rating || 5.0,
+            availability: worker.availability,
+            totalBookings,
+            completedBookings,
+            activeBookings,
+            pendingBookings,
+            totalEarnings
+        });
+    } catch (error) {
+        res.status(500).json({
+            message: "Error fetching worker stats",
+            error: error.message
+        });
+    }
+});
+
+// ======================================================
 // GET SINGLE WORKER
 // ======================================================
 router.get("/:id", async (req, res) => {
@@ -345,17 +439,35 @@ router.get("/:id", async (req, res) => {
 // ======================================================
 router.patch("/:id", protect, async (req, res) => {
     try {
-        const worker = await Worker.findByIdAndUpdate(
-            req.params.id,
-            req.body,
-            { new: true, runValidators: true }
-        );
-
-        if (!worker) {
+        const workerToUpdate = await Worker.findById(req.params.id);
+        if (!workerToUpdate) {
             return res.status(404).json({
                 message: "Worker not found"
             });
         }
+
+        // Authorization check: only the worker themselves or CooperativeAdmin can update
+        const isSelf = (workerToUpdate.userId && workerToUpdate.userId.toString() === req.user.id.toString()) ||
+                       (workerToUpdate.phone && workerToUpdate.phone === req.user.phone);
+        const isAdmin = req.user.role === "CooperativeAdmin";
+
+        if (!isSelf && !isAdmin) {
+            return res.status(403).json({
+                message: "Forbidden: You are not authorized to update this worker profile"
+            });
+        }
+
+        // Prevent non-admin workers from manually setting their own verificationStatus
+        const updateData = { ...req.body };
+        if (!isAdmin && updateData.verificationStatus !== undefined) {
+            delete updateData.verificationStatus;
+        }
+
+        const worker = await Worker.findByIdAndUpdate(
+            req.params.id,
+            updateData,
+            { new: true, runValidators: true }
+        );
 
         res.status(200).json({
             message: "Worker updated successfully",
@@ -370,9 +482,9 @@ router.patch("/:id", protect, async (req, res) => {
 });
 
 // ======================================================
-// DELETE WORKER
+// DELETE WORKER (CooperativeAdmin only)
 // ======================================================
-router.delete("/:id", protect, async (req, res) => {
+router.delete("/:id", protect, allowRoles("CooperativeAdmin"), async (req, res) => {
     try {
         const worker = await Worker.findByIdAndDelete(req.params.id);
 
@@ -394,13 +506,16 @@ router.delete("/:id", protect, async (req, res) => {
 });
 
 // ======================================================
-// VERIFY WORKER
+// VERIFY WORKER (CooperativeAdmin only)
 // ======================================================
-router.patch("/:id/verify", protect, async (req, res) => {
+router.patch("/:id/verify", protect, allowRoles("CooperativeAdmin"), async (req, res) => {
     try {
+        const { status } = req.body;
+        const newStatus = status || "Verified";
+
         const worker = await Worker.findByIdAndUpdate(
             req.params.id,
-            { verificationStatus: "Verified" },
+            { verificationStatus: newStatus },
             { new: true }
         );
 
@@ -411,7 +526,7 @@ router.patch("/:id/verify", protect, async (req, res) => {
         }
 
         res.status(200).json({
-            message: "Worker verified successfully",
+            message: `Worker ${newStatus.toLowerCase()} successfully`,
             worker
         });
     } catch (error) {

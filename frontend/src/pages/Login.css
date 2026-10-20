@@ -495,6 +495,10 @@
     background: #d19c1d;
 }
 
+.worker-card::before {
+    background: #2563eb;
+}
+
 .account-card:hover {
     transform: translateY(-9px);
 
@@ -557,6 +561,13 @@
 
     background:
         rgba(245, 197, 66, 0.17);
+}
+
+.worker-icon {
+    color: #2563eb;
+
+    background:
+        rgba(37, 99, 235, 0.12);
 }
 
 
@@ -661,6 +672,22 @@
     box-shadow:
         0 10px 22px
         rgba(209, 156, 29, 0.25);
+}
+
+.worker-btn {
+    background: #2563eb;
+
+    color: white;
+}
+
+.worker-btn:hover {
+    background: #1d4ed8;
+
+    transform: translateY(-2px);
+
+    box-shadow:
+        0 10px 22px
+        rgba(37, 99, 235, 0.25);
 }
 
 

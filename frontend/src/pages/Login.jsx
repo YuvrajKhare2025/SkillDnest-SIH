@@ -2,6 +2,7 @@ import { useNavigate } from "react-router-dom";
 import {
     UserRound,
     Building2,
+    Wrench,
     ArrowRight,
     ShieldCheck,
     Sparkles
@@ -224,6 +225,59 @@ function Login() {
                                     }
                                 >
                                     Register society
+                                </button>
+
+                            </div>
+
+                        </div>
+
+
+                        {/* SKILLED WORKER */}
+
+                        <div className="account-card worker-card">
+
+                            <div className="card-top">
+
+                                <div className="account-icon worker-icon">
+                                    <Wrench size={27} />
+                                </div>
+
+                                <span className="account-tag">
+                                    SKILLED WORKER
+                                </span>
+
+                            </div>
+
+                            <h3>
+                                Worker Account
+                            </h3>
+
+                            <p>
+                                Access your assigned gigs, toggle
+                                on-call availability, update job status
+                                and track your earnings.
+                            </p>
+
+                            <button
+                                className="continue-btn worker-btn"
+                                onClick={() =>
+                                    navigate("/worker-login")
+                                }
+                            >
+                                Login as Worker
+                                <ArrowRight size={18} />
+                            </button>
+
+                            <div className="new-account">
+
+                                <span>Registered with coop?</span>
+
+                                <button
+                                    onClick={() =>
+                                        navigate("/worker-login")
+                                    }
+                                >
+                                    Access your dashboard
                                 </button>
 
                             </div>

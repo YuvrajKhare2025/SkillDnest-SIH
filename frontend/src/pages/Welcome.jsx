@@ -118,6 +118,15 @@ function Welcome() {
                             <Building2 size={14} />
                             <span>Cooperative Portal</span>
                         </button>
+                        <span className="portal-shortcut-divider">•</span>
+                        <button
+                            type="button"
+                            className="portal-shortcut-btn"
+                            onClick={() => navigate("/worker-login")}
+                        >
+                            <Wrench size={14} />
+                            <span>Worker Portal</span>
+                        </button>
                     </div>
                 </div>
             </div>

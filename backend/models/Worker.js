@@ -89,6 +89,12 @@ const workerSchema = new mongoose.Schema(
     }
 );
 
+// High-Concurrency Performance Indexes
+workerSchema.index({ cooperativeId: 1, availability: 1 });
+workerSchema.index({ skills: 1 });
+workerSchema.index({ phone: 1 });
+workerSchema.index({ userId: 1 });
+
 module.exports = mongoose.model(
     "Worker",
     workerSchema

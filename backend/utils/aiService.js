@@ -11,40 +11,40 @@ const fallbackAnalyze = (userMessage = "") => {
     let location = "";
 
     // Categories and skills detection
-    if (text.includes("plumb") || text.includes("pipe") || text.includes("leak") || text.includes("tap") || text.includes("drain") || text.includes("sink")) {
+    if (text.includes("plumb") || text.includes("pipe") || text.includes("leak") || text.includes("tap") || text.includes("drain") || text.includes("sink") || text.includes("nal") || text.includes("paani")) {
         service = "Plumbing";
         category = "Household";
-    } else if (text.includes("electr") || text.includes("wire") || text.includes("switch") || text.includes("short circuit") || text.includes("fan") || text.includes("light")) {
+    } else if (text.includes("electr") || text.includes("wire") || text.includes("switch") || text.includes("short circuit") || text.includes("fan") || text.includes("light") || text.includes("bijli") || text.includes("motor")) {
         service = "Electrical";
         category = "Household";
-    } else if (text.includes("carpent") || text.includes("wood") || text.includes("door") || text.includes("furniture") || text.includes("lock")) {
+    } else if (text.includes("carpent") || text.includes("wood") || text.includes("door") || text.includes("furniture") || text.includes("lock") || text.includes("lakdi") || text.includes("darwaja")) {
         service = "Carpenter";
         category = "Household";
-    } else if (text.includes("clean") || text.includes("sweep") || text.includes("maid") || text.includes("housekeeping") || text.includes("dust")) {
+    } else if (text.includes("clean") || text.includes("sweep") || text.includes("maid") || text.includes("housekeeping") || text.includes("dust") || text.includes("safai") || text.includes("pochha")) {
         service = "Cleaner";
         category = "Household";
-    } else if (text.includes("paint") || text.includes("wall") || text.includes("whitewash")) {
+    } else if (text.includes("paint") || text.includes("wall") || text.includes("whitewash") || text.includes("rang") || text.includes("putai")) {
         service = "Painter";
         category = "Household";
-    } else if (text.includes("care") || text.includes("elder") || text.includes("nurse") || text.includes("patient")) {
+    } else if (text.includes("care") || text.includes("elder") || text.includes("nurse") || text.includes("patient") || text.includes("bujurg")) {
         service = "Caregiver";
         category = "Community";
-    } else if (text.includes("garden") || text.includes("lawn") || text.includes("plant") || text.includes("tree")) {
+    } else if (text.includes("garden") || text.includes("lawn") || text.includes("plant") || text.includes("tree") || text.includes("bagicha") || text.includes("paudhe")) {
         service = "Gardener";
         category = "Community";
-    } else if (text.includes("driv") || text.includes("car") || text.includes("chauffeur")) {
+    } else if (text.includes("driv") || text.includes("car") || text.includes("chauffeur") || text.includes("gadi")) {
         service = "Driver";
         category = "Community";
-    } else if (text.includes("mechanic") || text.includes("bike") || text.includes("vehicle") || text.includes("engine") || text.includes("puncture")) {
+    } else if (text.includes("mechanic") || text.includes("bike") || text.includes("vehicle") || text.includes("engine") || text.includes("puncture") || text.includes("scooter")) {
         service = "Mechanic";
         category = "Community";
-    } else if (text.includes("tutor") || text.includes("teach") || text.includes("math") || text.includes("science") || text.includes("study")) {
+    } else if (text.includes("tutor") || text.includes("teach") || text.includes("math") || text.includes("science") || text.includes("study") || text.includes("padhai")) {
         service = "Tutor";
         category = "Community";
-    } else if (text.includes("agri") || text.includes("farm") || text.includes("harvest") || text.includes("wheat") || text.includes("crop") || text.includes("paddy") || text.includes("field")) {
+    } else if (text.includes("agri") || text.includes("farm") || text.includes("harvest") || text.includes("wheat") || text.includes("crop") || text.includes("paddy") || text.includes("field") || text.includes("khet") || text.includes("gehu") || text.includes("fasal") || text.includes("kisan") || text.includes("labour")) {
         service = "Agriculture Labour";
         category = "Agriculture";
-    } else if (text.includes("domestic") || text.includes("cook") || text.includes("utensil")) {
+    } else if (text.includes("domestic") || text.includes("cook") || text.includes("utensil") || text.includes("khana") || text.includes("bartan")) {
         service = "Domestic Worker";
         category = "Household";
     }
@@ -58,8 +58,8 @@ const fallbackAnalyze = (userMessage = "") => {
     if (text.includes("day") || text.includes("din")) {
         const match = text.match(/(\d+)\s*(days|day|din)/);
         duration = match ? `${match[1]} days` : "1-2 days";
-    } else if (text.includes("hour") || text.includes("ghante")) {
-        const match = text.match(/(\d+)\s*(hours|hour|ghante)/);
+    } else if (text.includes("hour") || text.includes("ghante") || text.includes("ghanta")) {
+        const match = text.match(/(\d+)\s*(hours|hour|ghante|ghanta)/);
         duration = match ? `${match[1]} hours` : "2-3 hours";
     }
 
@@ -94,7 +94,7 @@ const analyzeServiceRequest = async (userMessage) => {
 
     const prompt = `
 You are an AI assistant for a cooperative gig services platform (SkillDnest).
-Analyze the customer's service request in English or Hindi / Hinglish.
+Analyze the customer's service request in English, Hindi, or Hinglish.
 
 Return ONLY valid JSON matching this schema:
 {
@@ -113,19 +113,27 @@ ${userMessage}
 
     try {
         const genAI = new GoogleGenerativeAI(apiKey);
-        // Try standard Gemini models with graceful fallback
-        const modelNames = ["gemini-1.5-flash", "gemini-2.0-flash", "gemini-1.5-pro", "gemini-pro"];
+        // Modern supported Gemini models prioritizing ultra-fast active endpoints
+        const modelNames = [
+            "gemini-2.5-flash",
+            "gemini-2.5-flash-lite",
+            "gemini-3.5-flash",
+            "gemini-3.8-flash",
+            "gemini-flash-latest"
+        ];
         let textResult = "";
 
         for (const modelName of modelNames) {
             try {
                 const model = genAI.getGenerativeModel({ model: modelName });
-                const result = await model.generateContent(prompt);
-                const response = await result.response;
-                textResult = response.text();
+                const generatePromise = model.generateContent(prompt).then(r => r.response.text());
+                const timeoutPromise = new Promise((_, reject) =>
+                    setTimeout(() => reject(new Error("Request timeout after 12s")), 12000)
+                );
+                textResult = await Promise.race([generatePromise, timeoutPromise]);
                 if (textResult) break;
             } catch (err) {
-                console.warn(`Model ${modelName} attempt failed: ${err.message}`);
+                console.warn(`Model ${modelName} note: ${err.message?.slice(0, 80)}`);
             }
         }
 

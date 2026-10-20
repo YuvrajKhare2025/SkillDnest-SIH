@@ -123,9 +123,9 @@ router.post(
 );
 
 // =====================================================
-// GET BOOKINGS (ROLE BASED)
+// GET BOOKINGS (ROLE BASED - supports both / and /my-bookings)
 // =====================================================
-router.get("/", protect, async (req, res) => {
+const getBookingsHandler = async (req, res) => {
     try {
         // CUSTOMER
         if (req.user.role === "Customer") {
@@ -207,7 +207,10 @@ router.get("/", protect, async (req, res) => {
             error: error.message
         });
     }
-});
+};
+
+router.get("/", protect, getBookingsHandler);
+router.get("/my-bookings", protect, getBookingsHandler);
 
 // =====================================================
 // GET BOOKING STATUS
@@ -248,7 +251,7 @@ router.get("/:id/status", protect, async (req, res) => {
     }
 });
 
-// Helper for status updates & notifications
+// Helper for status updates & notifications with Object-Level Authorization (IDOR protection)
 const updateBookingStatus = async (req, res, newStatus, successMsg, notifyWorkerMsg, notifyCustomerMsg) => {
     try {
         const booking = await Booking.findById(req.params.id)
@@ -258,6 +261,43 @@ const updateBookingStatus = async (req, res, newStatus, successMsg, notifyWorker
         if (!booking) {
             return res.status(404).json({
                 message: "Booking not found"
+            });
+        }
+
+        // BOLA / IDOR Verification: Check if user is authorized to perform this status transition
+        const isCustomer = req.user.role === "Customer";
+        const isCoopAdmin = req.user.role === "CooperativeAdmin";
+        const isWorkerRole = req.user.role === "Worker";
+
+        const customerUserId = booking.customerId?.userId?.toString();
+        const workerUserId = booking.workerId?.userId?.toString();
+
+        let isAuthorized = false;
+
+        if (isCustomer) {
+            // Customer can only cancel their own booking
+            if (newStatus === "Cancelled" && customerUserId && customerUserId === req.user.id.toString()) {
+                isAuthorized = true;
+            }
+        } else if (isCoopAdmin) {
+            // Cooperative Admins are authorized
+            isAuthorized = true;
+        } else if (isWorkerRole) {
+            // Assigned worker can update status
+            if (workerUserId && workerUserId === req.user.id.toString()) {
+                isAuthorized = true;
+            } else {
+                // If worker doc doesn't have userId directly linked yet, check phone match
+                const workerDoc = await Worker.findOne({ userId: req.user.id });
+                if (workerDoc && workerDoc._id.toString() === booking.workerId?._id?.toString()) {
+                    isAuthorized = true;
+                }
+            }
+        }
+
+        if (!isAuthorized) {
+            return res.status(403).json({
+                message: "Unauthorized: You do not have permission to modify this booking"
             });
         }
 

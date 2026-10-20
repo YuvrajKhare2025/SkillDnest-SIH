@@ -4,6 +4,8 @@ const jwt = require("jsonwebtoken");
 
 const User = require("../models/User");
 const Customer = require("../models/Customer");
+const Worker = require("../models/Worker");
+const Cooperative = require("../models/Cooperative");
 
 const router = express.Router();
 
@@ -12,7 +14,7 @@ const router = express.Router();
 // =========================
 router.post("/register", async (req, res) => {
     try {
-        const { name, phone, email, password, role, location } = req.body;
+        const { name, phone, email, password, role, location, skills, experience, cooperativeId } = req.body;
 
         // Required fields check
         if (!name || !phone || !password) {
@@ -58,6 +60,8 @@ router.post("/register", async (req, res) => {
 
         // If Customer role, create/link Customer profile
         let customerProfile = null;
+        let workerProfile = null;
+
         if (assignedRole === "Customer") {
             customerProfile = await Customer.create({
                 userId: user._id,
@@ -65,6 +69,33 @@ router.post("/register", async (req, res) => {
                 phone: user.phone,
                 location: location ? location.trim() : "Local Community"
             });
+        } else if (assignedRole === "Worker") {
+            // Find existing worker by phone or create new
+            let worker = await Worker.findOne({ phone: trimmedPhone });
+            if (worker) {
+                worker.userId = user._id;
+                await worker.save();
+                workerProfile = worker;
+            } else {
+                let coopId = cooperativeId;
+                if (!coopId) {
+                    const firstCoop = await Cooperative.findOne();
+                    coopId = firstCoop ? firstCoop._id : null;
+                }
+                if (coopId) {
+                    workerProfile = await Worker.create({
+                        cooperativeId: coopId,
+                        userId: user._id,
+                        name: user.name,
+                        phone: user.phone,
+                        skills: skills ? (Array.isArray(skills) ? skills : [skills]) : ["General Service"],
+                        experience: Number(experience) || 1,
+                        location: location ? location.trim() : "Local Community",
+                        availability: true,
+                        verificationStatus: "Verified"
+                    });
+                }
+            }
         }
 
         // Generate JWT token on register so user can proceed directly
@@ -88,7 +119,8 @@ router.post("/register", async (req, res) => {
                 phone: user.phone,
                 email: user.email,
                 role: user.role,
-                customerProfileId: customerProfile?._id
+                customerProfileId: customerProfile?._id,
+                workerProfileId: workerProfile?._id
             }
         });
     } catch (error) {
@@ -140,6 +172,8 @@ router.post("/login", async (req, res) => {
 
         // Ensure Customer profile exists if role is Customer
         let customerProfile = null;
+        let workerProfile = null;
+
         if (user.role === "Customer") {
             customerProfile = await Customer.findOne({ userId: user._id });
             if (!customerProfile) {
@@ -149,6 +183,15 @@ router.post("/login", async (req, res) => {
                     phone: user.phone,
                     location: "Local Community"
                 });
+            }
+        } else if (user.role === "Worker") {
+            workerProfile = await Worker.findOne({
+                $or: [{ userId: user._id }, { phone: user.phone }]
+            }).populate("cooperativeId", "societyName phone district");
+
+            if (workerProfile && !workerProfile.userId) {
+                workerProfile.userId = user._id;
+                await workerProfile.save();
             }
         }
 
@@ -173,7 +216,17 @@ router.post("/login", async (req, res) => {
                 phone: user.phone,
                 email: user.email,
                 role: user.role,
-                customerProfileId: customerProfile?._id
+                customerProfileId: customerProfile?._id,
+                workerProfileId: workerProfile?._id,
+                worker: workerProfile ? {
+                    id: workerProfile._id,
+                    name: workerProfile.name,
+                    skills: workerProfile.skills,
+                    rating: workerProfile.rating,
+                    availability: workerProfile.availability,
+                    location: workerProfile.location,
+                    cooperative: workerProfile.cooperativeId
+                } : null
             }
         });
     } catch (error) {

@@ -80,6 +80,13 @@ router.post(
                 });
             }
 
+            // Verify booking completion status before allowing review
+            if (booking.status !== "Completed") {
+                return res.status(400).json({
+                    message: "You can only review bookings that have been completed by the worker"
+                });
+            }
+
             // Check duplicate review
             const existingReview = await Review.findOne({
                 bookingId: booking._id

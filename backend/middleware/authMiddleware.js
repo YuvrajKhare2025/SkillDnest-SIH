@@ -20,7 +20,7 @@ const protect = (req, res, next) => {
 
         const decoded = jwt.verify(
             token,
-            process.env.JWT_SECRET
+            process.env.JWT_SECRET || "SkillDnest_Coop_Secret_2026"
         );
 
         req.user = decoded;

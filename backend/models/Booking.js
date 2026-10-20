@@ -65,4 +65,8 @@ const bookingSchema = new mongoose.Schema(
     }
 );
 
+// High-Concurrency Query Indexes
+bookingSchema.index({ customerId: 1, createdAt: -1 });
+bookingSchema.index({ workerId: 1, status: 1 });
+
 module.exports = mongoose.model("Booking", bookingSchema);

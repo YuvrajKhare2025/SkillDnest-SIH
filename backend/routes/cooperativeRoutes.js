@@ -203,6 +203,7 @@ router.get("/:id/workers", async (req, res) => {
 router.patch(
     "/:id/verify",
     protect,
+    allowRoles("CooperativeAdmin"),
     async (req, res) => {
         try {
             const { status } = req.body;

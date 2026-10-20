@@ -33,8 +33,8 @@ router.post("/", protect, async (req, res) => {
     }
 });
 
-// 2. GET MY NOTIFICATIONS
-router.get("/my", protect, async (req, res) => {
+// 2. GET MY NOTIFICATIONS (supports both /my and /my-notifications)
+const getMyNotificationsHandler = async (req, res) => {
     try {
         const notifications = await Notification.find({
             userId: req.user.id
@@ -53,7 +53,10 @@ router.get("/my", protect, async (req, res) => {
             error: error.message
         });
     }
-});
+};
+
+router.get("/my", protect, getMyNotificationsHandler);
+router.get("/my-notifications", protect, getMyNotificationsHandler);
 
 // 3. MARK NOTIFICATION AS READ
 router.patch("/:id/read", protect, async (req, res) => {

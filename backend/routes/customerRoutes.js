@@ -173,13 +173,12 @@ router.patch(
                 });
             }
 
-            if (
-                req.user.role === "Customer" &&
-                customer.userId &&
-                customer.userId.toString() !== req.user.id.toString()
-            ) {
+            const isOwner = customer.userId && customer.userId.toString() === req.user.id.toString();
+            const isAdmin = req.user.role === "CooperativeAdmin";
+
+            if (!isOwner && !isAdmin) {
                 return res.status(403).json({
-                    message: "You can only update your own profile"
+                    message: "Forbidden: You are not authorized to update this customer profile"
                 });
             }
 

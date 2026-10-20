@@ -24,6 +24,10 @@ const customerSchema = new mongoose.Schema({
         required: true
     }
 
-});
+}, { timestamps: true });
+
+// High-Concurrency Performance Indexes
+customerSchema.index({ userId: 1 });
+customerSchema.index({ phone: 1 });
 
 module.exports = mongoose.model("Customer", customerSchema);

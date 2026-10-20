@@ -40,10 +40,50 @@ import {
 } from "lucide-react";
 
 import logo from "../assets/Skill D Nest.jpeg";
+import imgPlumbing from "../assets/service-plumbing.jpg";
+import imgElectrical from "../assets/service-electrical.jpg";
+import imgCarpentry from "../assets/service-carpentry.jpg";
+import imgAgriculture from "../assets/service-agriculture.jpg";
 import api from "../services/api";
 import { translations } from "../utils/translations";
 import ServiceMap from "../components/ServiceMap";
 import "./CustomerDashboard.css";
+
+// Featured 4 Core Pillars with Dedicated High-Res Photography
+const FEATURED_SERVICES = [
+    {
+        id: "Plumbing",
+        title: "Plumbing & Piping",
+        desc: "Pipe leakage, tap fitting, flush repair & drainage systems",
+        price: "From ₹350",
+        img: imgPlumbing,
+        badge: "Most Requested"
+    },
+    {
+        id: "Electrical",
+        title: "Electrical & Power",
+        desc: "Panel servicing, switchboards, wiring & appliance repair",
+        price: "From ₹400",
+        img: imgElectrical,
+        badge: "Certified"
+    },
+    {
+        id: "Carpenter",
+        title: "Woodwork & Furniture",
+        desc: "Furniture assembly, door alignments, locks & custom woodwork",
+        price: "From ₹450",
+        img: imgCarpentry,
+        badge: "Artisanal"
+    },
+    {
+        id: "Agriculture Labour",
+        title: "Farm & Agriculture",
+        desc: "Seasonal harvesting, field prep, irrigation & tractor support",
+        price: "From ₹400",
+        img: imgAgriculture,
+        badge: "Cooperative"
+    }
+];
 
 // 12 Standard Reusable Categories
 const ALL_CATEGORIES = [
@@ -187,14 +227,14 @@ function CustomerDashboard() {
             setWorkers(workerList);
 
             // 2. Fetch Customer Bookings
-            const bookingsRes = await api.get("/bookings/my-bookings").catch(() => ({ data: [] }));
+            const bookingsRes = await api.get("/bookings").catch(() => ({ data: [] }));
             const bookingList = Array.isArray(bookingsRes.data)
                 ? bookingsRes.data
                 : (bookingsRes.data?.bookings || []);
             setBookings(bookingList);
 
             // 3. Fetch Notifications
-            const notifRes = await api.get("/notifications/my-notifications").catch(() => ({ data: [] }));
+            const notifRes = await api.get("/notifications/my").catch(() => ({ data: [] }));
             const notifList = Array.isArray(notifRes.data)
                 ? notifRes.data
                 : (notifRes.data?.notifications || []);
@@ -948,8 +988,47 @@ function CustomerDashboard() {
                     <section className="categories-filter-strip">
                         <div className="section-title-row">
                             <div>
-                                <span className="section-eyebrow">BROWSE ALL SERVICES</span>
-                                <h2>Service Categories</h2>
+                                <span className="section-eyebrow">COOPERATIVE PILLARS</span>
+                                <h2>Featured Local Services</h2>
+                            </div>
+                            <span className="category-count-label">High Demand Services</span>
+                        </div>
+
+                        {/* HIGH-RES VISUAL CARDS GRID */}
+                        <div className="featured-services-cards-grid">
+                            {FEATURED_SERVICES.map((feat) => {
+                                const isSelected = selectedCategory === feat.id;
+                                return (
+                                    <div
+                                        key={feat.id}
+                                        className={`featured-service-card ${isSelected ? "selected" : ""}`}
+                                        onClick={() => setSelectedCategory(feat.id)}
+                                    >
+                                        <div className="featured-img-wrap">
+                                            <img src={feat.img} alt={feat.title} className="featured-img" />
+                                            <span className="featured-badge">{feat.badge}</span>
+                                            <div className="featured-price-tag">{feat.price}</div>
+                                        </div>
+                                        <div className="featured-card-body">
+                                            <h3>{feat.title}</h3>
+                                            <p>{feat.desc}</p>
+                                            <button
+                                                type="button"
+                                                className="featured-select-btn"
+                                            >
+                                                <span>{isSelected ? "Filtering Active" : "Find Specialists"}</span>
+                                                <ArrowRight size={14} />
+                                            </button>
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+
+                        <div className="section-title-row sub-filter-row">
+                            <div>
+                                <span className="section-eyebrow">ALL DISCIPLINES</span>
+                                <h2>Browse by Specialization</h2>
                             </div>
                             <span className="category-count-label">12 Available Categories</span>
                         </div>

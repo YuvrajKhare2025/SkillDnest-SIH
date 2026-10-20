@@ -102,6 +102,58 @@ router.patch("/:id/pay", protect, async (req, res) => {
     }
 });
 
+// 2b. COMPLETE PROCESS PAYMENT (Used directly by Customer Dashboard Checkout)
+router.post("/process", protect, async (req, res) => {
+    try {
+        const { bookingId, amount, paymentMethod } = req.body;
+
+        if (!bookingId) {
+            return res.status(400).json({
+                message: "Booking ID is required"
+            });
+        }
+
+        const booking = await Booking.findById(bookingId);
+        if (!booking) {
+            return res.status(404).json({
+                message: "Booking not found"
+            });
+        }
+
+        let payment = await Payment.findOne({ bookingId });
+        if (!payment) {
+            payment = new Payment({
+                bookingId: booking._id,
+                customerId: booking.customerId,
+                workerId: booking.workerId,
+                amount: amount || booking.amount || 350,
+                paymentMethod: paymentMethod || "UPI",
+                paymentStatus: "Pending"
+            });
+        }
+
+        payment.paymentStatus = "Paid";
+        payment.paymentMethod = paymentMethod || payment.paymentMethod || "UPI";
+        payment.transactionId = "TXN-" + Date.now() + "-" + Math.floor(1000 + Math.random() * 9000);
+        await payment.save();
+
+        // Mark booking payment status as Paid
+        booking.paymentStatus = "Paid";
+        await booking.save();
+
+        res.status(200).json({
+            message: "Payment processed successfully",
+            payment,
+            transactionId: payment.transactionId
+        });
+    } catch (error) {
+        res.status(500).json({
+            message: "Error processing payment",
+            error: error.message
+        });
+    }
+});
+
 // 3. GET PAYMENT BY BOOKING ID
 router.get("/booking/:bookingId", protect, async (req, res) => {
     try {
